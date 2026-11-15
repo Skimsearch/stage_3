@@ -70,6 +70,16 @@ public final class IndexVersionWriter {
         }
     }
 
+        /** Builds the next version and its manifest. The manifest is written last. */
+    public IndexManifest buildNextVersionWithManifest(List<IndexStore.BookIndexData> books) {
+        Path db = buildNextVersion(books);
+        Matcher m = DB_FILE.matcher(db.getFileName().toString());
+        if (!m.matches()) {
+            throw new IllegalStateException("Unexpected file name: " + db);
+        }
+        return IndexManifestWriter.write(db, Long.parseLong(m.group(1)));
+    }
+
     /** Moves everything from the -wal file into the main file and leaves no side files. */
     static void makeSelfContained(Path db) {
         try (Connection c = DriverManager.getConnection("jdbc:sqlite:" + db);
