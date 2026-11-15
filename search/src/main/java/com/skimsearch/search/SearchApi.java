@@ -42,7 +42,11 @@ public final class SearchApi {
 
     /** Contract rule 5: ready only if servedVersion > 0 and >= the published version. */
     public Readiness readiness() {
-        long served = index.servedVersion();
+        return readiness(index);
+    }
+
+    private Readiness readiness(IndexReader reader) {
+        long served = reader.servedVersion();
         long pub;
         try {
             pub = published.publishedVersion();
@@ -106,11 +110,12 @@ public final class SearchApi {
             ctx.status(400).json(error("bad_request", "book_id must be greater than zero"));
             return;
         }
-        if (!requireReady(ctx)) {
+        IndexReader snapshot = readySnapshot(ctx);
+        if (snapshot == null) {
             return;
         }
 
-        var book = index.findBook(bookId);
+        var book = snapshot.findBook(bookId);
         if (book.isEmpty()) {
             ctx.status(404).json(error("not_found", "book not found"));
             return;
@@ -155,14 +160,16 @@ public final class SearchApi {
             ctx.status(400).json(error("bad_request", "limit must be between 1 and 100"));
             return;
         }
-        if (!requireReady(ctx)) {
+        IndexReader snapshot = readySnapshot(ctx);
+        if (snapshot == null) {
             return;
         }
 
         Filters filters = new Filters(ctx.queryParam("author"), ctx.queryParam("language"), year);
 
-        int total = index.count(term, filters);
-        var results = index.search(term, filters, offset, limit);
+        // Same snapshot for both calls: total and results always come from one version.
+        int total = snapshot.count(term, filters);
+        var results = snapshot.search(term, filters, offset, limit);
 
         Map<String, Object> echoedFilters = new LinkedHashMap<>();
         if (filters.author() != null) echoedFilters.put("author", filters.author());
@@ -180,17 +187,19 @@ public final class SearchApi {
     }
 
     /**
-     * Never answer from an index older than the published one: reply 503 so the
-     * gateway can retry on another backend (proxy_next_upstream).
+     * Pins one index version for this request and checks it is ready.
+     * Never answers from an index older than the published one: replies 503 (and
+     * returns null) so the gateway can retry on another backend (proxy_next_upstream).
      */
-    private boolean requireReady(Context ctx) {
-        Readiness r = readiness();
+    private IndexReader readySnapshot(Context ctx) {
+        IndexReader snapshot = index.snapshot();
+        Readiness r = readiness(snapshot);
         ctx.header(INDEX_VERSION, Long.toString(r.servedVersion()));
         if (!r.ready()) {
             ctx.status(503).json(error("not_ready", r.reason()));
-            return false;
+            return null;
         }
-        return true;
+        return snapshot;
     }
 
     private static Integer optionalInt(Context ctx, String name, Integer defaultValue) {

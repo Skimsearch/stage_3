@@ -35,6 +35,18 @@ public final class SearchMain {
         SqliteIndexReader index = new SqliteIndexReader(config.indexPath(), config.indexVersion());
         SearchApi api = new SearchApi(config.workerId(), index, published);
 
+        Javalin app = createApp(api, config.threads());
+        app.start(config.port());
+
+        System.out.printf("search role started: worker=%s port=%d threads=%d index=%s version=%d hazelcast=%s%n",
+                config.workerId(), config.port(), config.threads(),
+                config.indexPath().toAbsolutePath(), config.indexVersion(),
+                config.usesHazelcast() ? config.hzAddresses() : "off");
+        return app;
+    }
+
+    /** Javalin with Gson, the thread pool and the access log; routes registered, not started. */
+    static Javalin createApp(SearchApi api, int threads) {
         Gson gson = new Gson();
         JsonMapper mapper = new JsonMapper() {
             @Override
@@ -51,17 +63,11 @@ public final class SearchMain {
         Javalin app = Javalin.create(cfg -> {
             cfg.http.defaultContentType = "application/json";
             cfg.jsonMapper(mapper);
-            cfg.jetty.threadPool = new QueuedThreadPool(config.threads());
+            cfg.jetty.threadPool = new QueuedThreadPool(threads);
             cfg.requestLogger.http(api::logRequest);
         });
 
         api.register(app);
-        app.start(config.port());
-
-        System.out.printf("search role started: worker=%s port=%d threads=%d index=%s version=%d hazelcast=%s%n",
-                config.workerId(), config.port(), config.threads(),
-                config.indexPath().toAbsolutePath(), config.indexVersion(),
-                config.usesHazelcast() ? config.hzAddresses() : "off");
         return app;
     }
 
