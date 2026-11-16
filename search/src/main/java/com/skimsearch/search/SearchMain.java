@@ -5,6 +5,7 @@ import com.hazelcast.client.HazelcastClient;
 import com.hazelcast.client.config.ClientConfig;
 import com.hazelcast.client.config.ClientConnectionStrategyConfig;
 import com.hazelcast.core.HazelcastInstance;
+import com.skimsearch.common.IndexReader;
 import io.javalin.Javalin;
 import io.javalin.json.JsonMapper;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
@@ -18,6 +19,7 @@ import java.time.Duration;
 public final class SearchMain {
 
     private static final Duration POLL_EVERY = Duration.ofSeconds(1);
+    private static final Duration REFRESH_EVERY = Duration.ofSeconds(1);
 
     private SearchMain() {
     }
@@ -32,15 +34,19 @@ public final class SearchMain {
 
     public static Javalin start(SearchConfig config, PublishedVersionSource published) {
 
-        SqliteIndexReader index = new SqliteIndexReader(config.indexPath(), config.indexVersion());
+        IndexReader index = config.usesVersionedIndex()
+                ? new VersionedIndex(config.sharedIndexDir(), config.localIndexDir(), published, REFRESH_EVERY)
+                : new SqliteIndexReader(config.indexPath(), config.indexVersion());
         SearchApi api = new SearchApi(config.workerId(), index, published);
 
         Javalin app = createApp(api, config.threads());
         app.start(config.port());
 
-        System.out.printf("search role started: worker=%s port=%d threads=%d index=%s version=%d hazelcast=%s%n",
+        System.out.printf("search role started: worker=%s port=%d threads=%d index=%s hazelcast=%s%n",
                 config.workerId(), config.port(), config.threads(),
-                config.indexPath().toAbsolutePath(), config.indexVersion(),
+                config.usesVersionedIndex()
+                        ? "versioned " + config.sharedIndexDir().toAbsolutePath()
+                        : config.indexPath().toAbsolutePath() + " v" + config.indexVersion(),
                 config.usesHazelcast() ? config.hzAddresses() : "off");
         return app;
     }

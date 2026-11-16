@@ -8,8 +8,10 @@ import java.util.Map;
 /**
  * Search role configuration, from environment variables.
  *
- * HZ_ADDRESSES empty  -> no Hazelcast: the published version is PUBLISHED_VERSION (local tests).
- * HZ_ADDRESSES set    -> the published version comes from Hazelcast.
+ * HZ_ADDRESSES empty      -> no Hazelcast: the published version is PUBLISHED_VERSION (local tests).
+ * HZ_ADDRESSES set        -> the published version comes from Hazelcast.
+ * SHARED_INDEX_DIR empty  -> serves the single file SEARCH_INDEX_PATH as INDEX_VERSION (local tests).
+ * SHARED_INDEX_DIR set    -> design A: local copies of the versions published in that folder.
  */
 public record SearchConfig(
         String workerId,
@@ -20,7 +22,8 @@ public record SearchConfig(
         long publishedVersion,
         List<String> hzAddresses,
         String hzClusterName,
-        Path localDir
+        Path localDir,
+        Path sharedIndexDir
 ) {
 
     public static SearchConfig fromEnvironment() {
@@ -51,12 +54,24 @@ public record SearchConfig(
                 Long.parseLong(env.getOrDefault("PUBLISHED_VERSION", "1")),
                 hzAddresses,
                 env.getOrDefault("HZ_CLUSTER_NAME", "skimsearch"),
-                Path.of(env.getOrDefault("LOCAL_DIR", "local"))
+                Path.of(env.getOrDefault("LOCAL_DIR", "local")),
+                env.getOrDefault("SHARED_INDEX_DIR", "").isBlank()
+                        ? null
+                        : Path.of(env.get("SHARED_INDEX_DIR"))
         );
     }
 
     public boolean usesHazelcast() {
         return !hzAddresses.isEmpty();
+    }
+
+    public boolean usesVersionedIndex() {
+        return sharedIndexDir != null;
+    }
+
+    /** Node-local folder where this worker keeps its copies of the index versions. */
+    public Path localIndexDir() {
+        return localDir.resolve(workerId + "-index");
     }
 
     /** Node-local file with the last published version this worker saw. */
