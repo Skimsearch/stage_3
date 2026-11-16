@@ -1,6 +1,5 @@
 package com.skimsearch.search;
 
-import java.net.InetAddress;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -14,9 +13,11 @@ import java.util.Map;
  * HZ_ADDRESSES set        -> the published version comes from Hazelcast.
  * SHARED_INDEX_DIR empty  -> serves the single file SEARCH_INDEX_PATH as INDEX_VERSION (local tests).
  * SHARED_INDEX_DIR set    -> design A: local copies of the versions published in that folder.
- * CONSUL_URL empty        -> no service discovery (local tests).
  * CONSUL_URL set          -> registers in that Consul agent (normally http://127.0.0.1:8500),
- *                            advertising SEARCH_ADVERTISE_HOST (default: this machine's address).
+ *                            advertising SEARCH_ADVERTISE_HOST, which is then required: the IP
+ *                            other machines use to reach this Search (never guessed, because
+ *                            on Linux the local host name often resolves to 127.0.1.1).
+ * CONSUL_URL empty        -> no service discovery (local tests).
  */
 public record SearchConfig(
         String workerId,
@@ -51,6 +52,18 @@ public record SearchConfig(
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .toList();
+            
+        URI consulUrl = env.getOrDefault("CONSUL_URL", "").isBlank()
+                ? null
+                : URI.create(env.get("CONSUL_URL"));
+        String advertiseHost = env.getOrDefault("SEARCH_ADVERTISE_HOST", "").isBlank()
+                ? null
+                : env.get("SEARCH_ADVERTISE_HOST").trim();
+        if (consulUrl != null && advertiseHost == null) {
+            throw new IllegalArgumentException(
+                    "CONSUL_URL is set but SEARCH_ADVERTISE_HOST is missing: set it to this machine's IP");
+        }
+
 
         return new SearchConfig(
                 env.getOrDefault("WORKER_ID", "search-" + port),
@@ -65,22 +78,9 @@ public record SearchConfig(
                 env.getOrDefault("SHARED_INDEX_DIR", "").isBlank()
                         ? null
                         : Path.of(env.get("SHARED_INDEX_DIR")),
-                env.getOrDefault("CONSUL_URL", "").isBlank()
-                        ? null
-                        : URI.create(env.get("CONSUL_URL")),
-                env.getOrDefault("SEARCH_ADVERTISE_HOST", "").isBlank()
-                        ? localAddress()
-                        : env.get("SEARCH_ADVERTISE_HOST")
+                consulUrl,
+                advertiseHost
         );
-    }
-
-    /** Address other machines use to reach this one. Set SEARCH_ADVERTISE_HOST if the guess is wrong. */
-    private static String localAddress() {
-        try {
-            return InetAddress.getLocalHost().getHostAddress();
-        } catch (Exception e) {
-            return "127.0.0.1";
-        }
     }
 
     public boolean usesHazelcast() {

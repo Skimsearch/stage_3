@@ -64,7 +64,6 @@ public final class SearchMain {
         Javalin app = createApp(api, config.threads());
         app.start(config.port());
 
-        
         if (config.usesConsul()) {
             // after start(): Consul begins checking /health/ready as soon as it is registered
             ConsulRegistration consul = new ConsulRegistration(config.consulUrl(), config.workerId(),
