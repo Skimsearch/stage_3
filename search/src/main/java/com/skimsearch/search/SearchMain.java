@@ -23,6 +23,7 @@ public final class SearchMain {
     private static final Duration REFRESH_EVERY = Duration.ofSeconds(1);
     private static final Duration ANNOUNCE_EVERY = Duration.ofSeconds(1);
     private static final Duration ANNOUNCE_TTL = Duration.ofSeconds(10);
+    private static final Duration CONSUL_REREGISTER_EVERY = Duration.ofSeconds(30);
 
     private SearchMain() {
     }
@@ -63,12 +64,21 @@ public final class SearchMain {
         Javalin app = createApp(api, config.threads());
         app.start(config.port());
 
-        System.out.printf("search role started: worker=%s port=%d threads=%d index=%s hazelcast=%s%n",
+        
+        if (config.usesConsul()) {
+            // after start(): Consul begins checking /health/ready as soon as it is registered
+            ConsulRegistration consul = new ConsulRegistration(config.consulUrl(), config.workerId(),
+                    config.advertiseHost(), config.port(), CONSUL_REREGISTER_EVERY);
+            Runtime.getRuntime().addShutdownHook(new Thread(consul::close));
+        }
+
+        System.out.printf("search role started: worker=%s port=%d threads=%d index=%s hazelcast=%s consul=%s%n",
                 config.workerId(), config.port(), config.threads(),
                 config.usesVersionedIndex()
                         ? "versioned " + config.sharedIndexDir().toAbsolutePath()
                         : config.indexPath().toAbsolutePath() + " v" + config.indexVersion(),
-                hz != null ? config.hzAddresses() : "off");
+                hz != null ? config.hzAddresses() : "off",
+                config.usesConsul() ? config.consulUrl() + " as " + config.advertiseHost() : "off");
         return app;
     }
 
