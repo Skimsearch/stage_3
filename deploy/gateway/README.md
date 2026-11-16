@@ -37,7 +37,9 @@ consul-template -config consul-template.hcl
 ```
 
 Then start each Search with `CONSUL_URL=http://127.0.0.1:8500` and
-`SEARCH_ADVERTISE_HOST=<this machine's IP>`.
+`SEARCH_ADVERTISE_HOST` (required with `CONSUL_URL`; `127.0.0.1` on one machine).
+Search refuses to start without it instead of guessing: on Linux the host name often
+resolves to `127.0.1.1`, an address no other machine can reach.
 
 Stop: `nginx -p . -c nginx.conf -s stop`, then Ctrl+C in the other windows.
 
