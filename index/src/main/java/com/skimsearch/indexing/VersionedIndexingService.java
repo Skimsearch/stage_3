@@ -22,6 +22,9 @@ public final class VersionedIndexingService {
 
     /** New version = previous version + these books. Returns its manifest. */
     public IndexManifest indexBooks(List<Integer> bookIds) {
+        if (bookIds.isEmpty()) {
+            throw new IllegalArgumentException("No book IDs provided: a version must contain at least one book");
+        }
         List<IndexStore.BookIndexData> books = new ArrayList<>();
         for (int bookId : bookIds) {
             DatalakeReader.RawBook raw = datalake.read(bookId);
