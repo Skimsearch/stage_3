@@ -16,8 +16,8 @@ import java.time.Duration;
 import java.util.UUID;
 import java.util.function.LongSupplier;
 
-import static com.skimsearch.search.HazelcastPublishedVersion.META_MAP;
-import static com.skimsearch.search.HazelcastPublishedVersion.PUBLISHED_KEY;
+import static com.skimsearch.common.HazelcastNames.META_MAP;
+import static com.skimsearch.common.HazelcastNames.PUBLISHED_KEY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 

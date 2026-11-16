@@ -9,6 +9,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
+import static com.skimsearch.common.HazelcastNames.LOADED_MAP;
+
 
 /**
  * Announces this Search's highest loaded index version in the IMap "search-loaded"
@@ -21,8 +23,6 @@ import java.util.function.LongSupplier;
  *   Indexing how many Searches are active.
  */
 public final class LoadedVersionAnnouncer implements AutoCloseable {
-
-    public static final String LOADED_MAP = "search-loaded";
 
     private final HazelcastInstance hz;
     private final String workerId;
