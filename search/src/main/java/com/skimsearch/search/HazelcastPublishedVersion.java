@@ -19,6 +19,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static com.skimsearch.common.HazelcastNames.META_MAP;
+import static com.skimsearch.common.HazelcastNames.PUBLISHED_KEY;
+
 /**
  * Published index version read from Hazelcast (IMap "index-meta", key "index.publishedVersion").
  *
@@ -32,9 +35,6 @@ import java.util.concurrent.atomic.AtomicLong;
  *   Delete that file when resetting an experiment.
  */
 public final class HazelcastPublishedVersion implements PublishedVersionSource, AutoCloseable {
-
-    public static final String META_MAP = "index-meta";
-    public static final String PUBLISHED_KEY = "index.publishedVersion";
 
     private static final long UNKNOWN = -1;
 

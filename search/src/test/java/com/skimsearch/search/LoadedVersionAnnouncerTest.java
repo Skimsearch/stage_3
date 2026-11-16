@@ -12,7 +12,7 @@ import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
-import static com.skimsearch.search.LoadedVersionAnnouncer.LOADED_MAP;
+import static com.skimsearch.common.HazelcastNames.LOADED_MAP;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
