@@ -33,7 +33,9 @@ public final class IndexingRole implements AutoCloseable {
     }
 
     /** Builds the next version from these books and announces it as candidate. */
-    public IndexManifest indexBooks(List<Integer> bookIds) {
+    // synchronized: two concurrent calls in one process would write the same .tmp file.
+    // Across machines this is not enough; a Hazelcast FencedLock is needed (later PR).
+    public synchronized IndexManifest indexBooks(List<Integer> bookIds) {
         IndexManifest manifest = service.indexBooks(bookIds);
         publisher.announceCandidate(manifest);
         log("event=index-candidate-announced version=" + manifest.version());
