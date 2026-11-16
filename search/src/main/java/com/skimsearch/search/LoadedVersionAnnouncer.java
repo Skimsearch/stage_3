@@ -12,7 +12,6 @@ import java.util.function.LongSupplier;
 
 import static com.skimsearch.common.HazelcastNames.LOADED_MAP;
 
-
 /**
  * Announces this Search's highest loaded index version in the IMap "search-loaded"
  * (workerId -> version), so Indexing can promote a candidate once enough Searches have it.

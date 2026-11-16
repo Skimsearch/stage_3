@@ -1,6 +1,5 @@
 package com.skimsearch.search;
 
-import java.net.InetAddress;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -18,6 +17,7 @@ import java.util.Map;
  *                            advertising SEARCH_ADVERTISE_HOST, which is then required: the IP
  *                            other machines use to reach this Search (never guessed, because
  *                            on Linux the local host name often resolves to 127.0.1.1).
+ * CONSUL_URL empty        -> no service discovery (local tests).
  */
 public record SearchConfig(
         String workerId,
