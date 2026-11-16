@@ -16,6 +16,8 @@ import java.util.Optional;
  *  5. Readiness: Search is ready only if servedVersion() > 0 and >= the published version.
  *  6. If the index is unavailable, methods throw IndexUnavailableException,
  *     never an empty result.
+ *  7. A request that makes several calls (count + search) takes one snapshot() first,
+ *     so all its calls see the same version even if a new one is switched in meanwhile.
  */
 public interface IndexReader {
 
@@ -26,4 +28,12 @@ public interface IndexReader {
     Optional<Book> findBook(int bookId);
 
     long servedVersion();
+
+    /**
+     * A reader pinned to the version served right now. Readers that never change
+     * version (one SQLite file) can return themselves, which is the default.
+     */
+    default IndexReader snapshot() {
+        return this;
+    }
 }
