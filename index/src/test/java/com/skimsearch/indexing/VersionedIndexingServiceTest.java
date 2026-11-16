@@ -72,4 +72,10 @@ class VersionedIndexingServiceTest {
                 () -> service.indexBooks(List.of(1500)));
         assertEquals(0, writer.latestVersion());
     }
+
+        @Test
+    void emptyListIsRejectedAndWritesNothing() {
+        assertThrows(IllegalArgumentException.class, () -> service.indexBooks(List.of()));
+        assertEquals(0, writer.latestVersion());
+    }
 }
