@@ -14,29 +14,50 @@ import java.lang.reflect.Type;
 import java.time.Duration;
 
 /**
- * Standalone launcher of the search role (until Ines's single worker program calls SearchMain.start).
+ * Launcher of the search role. Standalone via main(), or from the single worker
+ * program via start(config, hazelcastInstance).
  */
 public final class SearchMain {
 
     private static final Duration POLL_EVERY = Duration.ofSeconds(1);
     private static final Duration REFRESH_EVERY = Duration.ofSeconds(1);
+    private static final Duration ANNOUNCE_EVERY = Duration.ofSeconds(1);
+    private static final Duration ANNOUNCE_TTL = Duration.ofSeconds(10);
 
     private SearchMain() {
     }
 
     public static void main(String[] args) {
         SearchConfig config = SearchConfig.fromEnvironment();
-        PublishedVersionSource published = config.usesHazelcast()
-                ? new HazelcastPublishedVersion(newClient(config), config.lastPublishedFile(), POLL_EVERY)
-                : config::publishedVersion; // local tests without Hazelcast
-        start(config, published);
+        start(config, config.usesHazelcast() ? newClient(config) : null);
     }
 
-    public static Javalin start(SearchConfig config, PublishedVersionSource published) {
+    /**
+     * Starts the search role.
+     *
+     * @param hz the worker's Hazelcast instance (client or member), or null for local
+     *           tests without Hazelcast (then PUBLISHED_VERSION is used).
+     */
+    public static Javalin start(SearchConfig config, HazelcastInstance hz) {
 
-        IndexReader index = config.usesVersionedIndex()
-                ? new VersionedIndex(config.sharedIndexDir(), config.localIndexDir(), published, REFRESH_EVERY)
-                : new SqliteIndexReader(config.indexPath(), config.indexVersion());
+        PublishedVersionSource published = hz != null
+                ? new HazelcastPublishedVersion(hz, config.lastPublishedFile(), POLL_EVERY)
+                : config::publishedVersion;
+
+        IndexReader index;
+        if (config.usesVersionedIndex()) {
+            VersionedIndex versioned = new VersionedIndex(
+                    config.sharedIndexDir(), config.localIndexDir(), published, REFRESH_EVERY);
+            if (hz != null) {
+                LoadedVersionAnnouncer announcer = new LoadedVersionAnnouncer(
+                        hz, config.workerId(), versioned::highestLoadedVersion, ANNOUNCE_EVERY, ANNOUNCE_TTL);
+                Runtime.getRuntime().addShutdownHook(new Thread(announcer::close));
+            }
+            index = versioned;
+        } else {
+            index = new SqliteIndexReader(config.indexPath(), config.indexVersion());
+        }
+
         SearchApi api = new SearchApi(config.workerId(), index, published);
 
         Javalin app = createApp(api, config.threads());
@@ -47,7 +68,7 @@ public final class SearchMain {
                 config.usesVersionedIndex()
                         ? "versioned " + config.sharedIndexDir().toAbsolutePath()
                         : config.indexPath().toAbsolutePath() + " v" + config.indexVersion(),
-                config.usesHazelcast() ? config.hzAddresses() : "off");
+                hz != null ? config.hzAddresses() : "off");
         return app;
     }
 
