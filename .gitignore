@@ -8,3 +8,5 @@ data/
 *.iml
 .DS_Store
 local/
+deploy/gateway/search-upstream.conf
+deploy/gateway/temp/
