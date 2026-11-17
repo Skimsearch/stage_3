@@ -10,3 +10,4 @@ data/
 local/
 deploy/gateway/search-upstream.conf
 deploy/gateway/temp/
+consul-data/
