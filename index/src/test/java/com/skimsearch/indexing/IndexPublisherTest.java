@@ -4,6 +4,7 @@ import com.hazelcast.config.Config;
 import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.map.IMap;
+import com.skimsearch.common.HazelcastNames;
 import com.skimsearch.common.IndexManifest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,8 +31,8 @@ class IndexPublisherTest {
         config.getNetworkConfig().getJoin().getMulticastConfig().setEnabled(false);
         config.getNetworkConfig().getJoin().getAutoDetectionConfig().setEnabled(false);
         hz = Hazelcast.newHazelcastInstance(config);
-        meta = hz.getMap(IndexPublisher.META_MAP);
-        loaded = hz.getMap(IndexPublisher.LOADED_MAP);
+        meta = hz.getMap(HazelcastNames.META_MAP);
+        loaded = hz.getMap(HazelcastNames.LOADED_MAP);
         publisher = new IndexPublisher(hz, () -> now);
     }
 
@@ -51,7 +52,7 @@ class IndexPublisherTest {
 
         assertEquals(2, publisher.candidateVersion());
         assertEquals(0, publisher.publishedVersion());
-        assertEquals(2, hz.getMap(IndexPublisher.VERSIONS_MAP).size());
+        assertEquals(2, hz.getMap(HazelcastNames.VERSIONS_MAP).size());
     }
 
     @Test
@@ -97,7 +98,7 @@ class IndexPublisherTest {
 
     @Test
     void publishedNeverGoesDown() {
-        meta.put(IndexPublisher.PUBLISHED_KEY, 5L);
+        meta.put(HazelcastNames.PUBLISHED_KEY, 5L);
         publisher.announceCandidate(manifest(3));
         loaded.put("s1", 3L);
 

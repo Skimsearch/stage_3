@@ -3,9 +3,16 @@ package com.skimsearch.indexing;
 import com.google.gson.Gson;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.map.IMap;
+import com.skimsearch.common.HazelcastNames;
 import com.skimsearch.common.IndexManifest;
 
 import java.util.function.LongSupplier;
+
+import static com.skimsearch.common.HazelcastNames.CANDIDATE_KEY;
+import static com.skimsearch.common.HazelcastNames.LOADED_MAP;
+import static com.skimsearch.common.HazelcastNames.META_MAP;
+import static com.skimsearch.common.HazelcastNames.PUBLISHED_KEY;
+import static com.skimsearch.common.HazelcastNames.VERSIONS_MAP;
 
 /**
  * Two-step publication of an index version (design A).
@@ -20,12 +27,6 @@ import java.util.function.LongSupplier;
  * Map and key names must match the search module.
  */
 public final class IndexPublisher {
-
-    public static final String META_MAP = "index-meta";
-    public static final String PUBLISHED_KEY = "index.publishedVersion";
-    public static final String CANDIDATE_KEY = "index.candidateVersion";
-    public static final String VERSIONS_MAP = "index-versions";
-    public static final String LOADED_MAP = "search-loaded";
 
     static final long MAX_WAIT_MILLIS = 30_000;
     private static final Gson GSON = new Gson();
