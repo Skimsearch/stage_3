@@ -3,10 +3,16 @@ package com.skimsearch.indexing;
 import com.google.gson.Gson;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.map.IMap;
-import com.skimsearch.common.HazelcastNames;
 import com.skimsearch.common.IndexManifest;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.time.Instant;
 import java.util.function.LongSupplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static com.skimsearch.common.HazelcastNames.CANDIDATE_KEY;
 import static com.skimsearch.common.HazelcastNames.LOADED_MAP;
@@ -24,27 +30,44 @@ import static com.skimsearch.common.HazelcastNames.VERSIONS_MAP;
  *
  * Versions never go down, and any Indexing worker may promote: the compare-and-set
  * (replace(key, old, new)) makes concurrent attempts harmless.
- * Map and key names must match the search module.
+ * Map and key names are defined in common (HazelcastNames), shared with the search module.
+ *
+ * With the shared index folder, restore() rebuilds the keys after Hazelcast restarts:
+ * the candidate and index-versions from the manifests, the published version from
+ * published-version.txt, which tryPromote writes whenever it raises the published version.
  */
 public final class IndexPublisher {
 
     static final long MAX_WAIT_MILLIS = 30_000;
+    static final String PUBLISHED_FILE = "published-version.txt";
+    private static final Pattern MANIFEST = Pattern.compile("index-v(\\d+)\\.manifest\\.json");
     private static final Gson GSON = new Gson();
 
     private final IMap<String, Long> meta;
     private final IMap<Long, String> versions;
     private final IMap<String, Long> loaded;
+    private final Path sharedIndexDir;
     private final LongSupplier clock;
 
     public IndexPublisher(HazelcastInstance hz) {
-        this(hz, System::currentTimeMillis);
+        this(hz, null, System::currentTimeMillis);
+    }
+
+    /** With the shared index folder, the publisher can restore its keys after a restart. */
+    public IndexPublisher(HazelcastInstance hz, Path sharedIndexDir) {
+        this(hz, sharedIndexDir, System::currentTimeMillis);
     }
 
     /** The clock is a parameter so tests can move time forward. */
     IndexPublisher(HazelcastInstance hz, LongSupplier clock) {
+        this(hz, null, clock);
+    }
+
+    IndexPublisher(HazelcastInstance hz, Path sharedIndexDir, LongSupplier clock) {
         this.meta = hz.getMap(META_MAP);
         this.versions = hz.getMap(VERSIONS_MAP);
         this.loaded = hz.getMap(LOADED_MAP);
+        this.sharedIndexDir = sharedIndexDir;
         this.clock = clock;
     }
 
@@ -74,7 +97,11 @@ public final class IndexPublisher {
         if (!enough && !timedOut) {
             return false;
         }
-        return raise(PUBLISHED_KEY, candidate);
+        boolean raised = raise(PUBLISHED_KEY, candidate);
+        if (raised) {
+            savePublishedFile(candidate);
+        }
+        return raised;
     }
 
     public long publishedVersion() {
@@ -83,6 +110,63 @@ public final class IndexPublisher {
 
     public long candidateVersion() {
         return current(CANDIDATE_KEY);
+    }
+
+    /**
+     * Call once at startup. Rebuilds index-versions and the candidate from the manifests
+     * in the shared folder, and the published version from published-version.txt.
+     * It only raises keys, so it is harmless if Hazelcast already had them.
+     */
+    public void restore() {
+        if (sharedIndexDir == null) {
+            return;
+        }
+        long highest = 0;
+        try (var files = Files.list(sharedIndexDir)) {
+            for (Path file : (Iterable<Path>) files::iterator) {
+                Matcher m = MANIFEST.matcher(file.getFileName().toString());
+                if (!m.matches()) {
+                    continue;
+                }
+                IndexManifest manifest = IndexManifestWriter.read(file);
+                versions.putIfAbsent(manifest.version(), GSON.toJson(manifest));
+                highest = Math.max(highest, manifest.version());
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Cannot list " + sharedIndexDir, e);
+        }
+        if (highest > 0) {
+            raise(CANDIDATE_KEY, highest);
+        }
+        long published = Math.min(readPublishedFile(), highest);
+        if (published > 0) {
+            raise(PUBLISHED_KEY, published);
+        }
+        System.out.println("ts=" + Instant.now() + " event=index-keys-restored candidate="
+                + candidateVersion() + " published=" + publishedVersion());
+    }
+
+    private long readPublishedFile() {
+        try {
+            Path file = sharedIndexDir.resolve(PUBLISHED_FILE);
+            return Files.exists(file) ? Long.parseLong(Files.readString(file).trim()) : 0;
+        } catch (IOException | NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /** Atomic write; never lowers the saved version. */
+    private void savePublishedFile(long version) {
+        if (sharedIndexDir == null || readPublishedFile() >= version) {
+            return;
+        }
+        try {
+            Path tmp = sharedIndexDir.resolve(PUBLISHED_FILE + ".tmp");
+            Files.writeString(tmp, Long.toString(version));
+            Files.move(tmp, sharedIndexDir.resolve(PUBLISHED_FILE), StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            System.out.println("ts=" + Instant.now() + " event=published-file-write-failed error=" + e);
+        }
     }
 
     private long waitedMillis(long version) {

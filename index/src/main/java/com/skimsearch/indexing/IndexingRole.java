@@ -28,6 +28,7 @@ public final class IndexingRole implements AutoCloseable {
             t.setDaemon(true);
             return t;
         });
+        publisher.restore();
         long ms = promoteEvery.toMillis();
         promoter.scheduleWithFixedDelay(this::promoteQuietly, ms, ms, TimeUnit.MILLISECONDS);
     }
