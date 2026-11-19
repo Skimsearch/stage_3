@@ -40,6 +40,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * Every timestamp comes from this machine's clock, so there is no skew between machines.
  *
  * Output in <out>/<runId>/: requests.csv, consul.csv, marks.csv and summary.txt.
+ * Real runs go to results/<runId>/ and are committed: the assignment requires the raw data.
+ * For trial runs use --out results/dev, which git ignores.
  */
 public class PropagationProbe {
 
