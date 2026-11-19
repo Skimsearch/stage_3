@@ -10,6 +10,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -48,6 +50,8 @@ public final class IndexPublisher {
     private final IMap<String, Long> loaded;
     private final Path sharedIndexDir;
     private final LongSupplier clock;
+    /** Unreadable manifests already reported, so a repeated restore() does not repeat the log line. */
+    private final Set<String> reportedBad = ConcurrentHashMap.newKeySet();
 
     public IndexPublisher(HazelcastInstance hz) {
         this(hz, null, System::currentTimeMillis);
@@ -118,7 +122,7 @@ public final class IndexPublisher {
      * It only raises keys, so it is harmless if Hazelcast already had them.
      */
     public void restore() {
-        if (sharedIndexDir == null) {
+        if (sharedIndexDir == null || !Files.isDirectory(sharedIndexDir)) {
             return;
         }
         long highest = 0;
@@ -128,7 +132,10 @@ public final class IndexPublisher {
                 if (!m.matches()) {
                     continue;
                 }
-                IndexManifest manifest = IndexManifestWriter.read(file);
+                IndexManifest manifest = readQuietly(file);
+                if (manifest == null) {
+                    continue;
+                }
                 versions.putIfAbsent(manifest.version(), GSON.toJson(manifest));
                 highest = Math.max(highest, manifest.version());
             }
@@ -142,8 +149,27 @@ public final class IndexPublisher {
         if (published > 0) {
             raise(PUBLISHED_KEY, published);
         }
-        System.out.println("ts=" + Instant.now() + " event=index-keys-restored candidate="
-                + candidateVersion() + " published=" + publishedVersion());
+        if (highest > 0) {
+            System.out.println("ts=" + Instant.now() + " event=index-keys-restored candidate="
+                    + candidateVersion() + " published=" + publishedVersion());
+        }
+    }
+
+    /** A corrupted or empty manifest is skipped (and reported once) instead of stopping the indexer. */
+    private IndexManifest readQuietly(Path file) {
+        try {
+            IndexManifest manifest = IndexManifestWriter.read(file);
+            if (manifest == null) {
+                throw new IllegalStateException("empty manifest");
+            }
+            return manifest;
+        } catch (RuntimeException e) {
+            if (reportedBad.add(file.getFileName().toString())) {
+                System.out.println("ts=" + Instant.now() + " event=manifest-skipped file="
+                        + file.getFileName() + " error=" + e);
+            }
+            return null;
+        }
     }
 
     private long readPublishedFile() {
@@ -160,12 +186,21 @@ public final class IndexPublisher {
         if (sharedIndexDir == null || readPublishedFile() >= version) {
             return;
         }
+        Path tmp = null;
         try {
-            Path tmp = sharedIndexDir.resolve(PUBLISHED_FILE + ".tmp");
+            // unique temp name: two promoters on different machines must not share one
+            tmp = Files.createTempFile(sharedIndexDir, "published-version", ".tmp");
             Files.writeString(tmp, Long.toString(version));
             Files.move(tmp, sharedIndexDir.resolve(PUBLISHED_FILE), StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
             System.out.println("ts=" + Instant.now() + " event=published-file-write-failed error=" + e);
+            if (tmp != null) {
+                try {
+                    Files.deleteIfExists(tmp);
+                } catch (IOException ignored) {
+                    // nothing else to do
+                }
+            }
         }
     }
 

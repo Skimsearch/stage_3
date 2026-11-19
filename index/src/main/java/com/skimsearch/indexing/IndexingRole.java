@@ -45,6 +45,10 @@ public final class IndexingRole implements AutoCloseable {
 
     private void promoteQuietly() {
         try {
+            if (publisher.candidateVersion() == 0) {
+                // Hazelcast may have restarted while this process kept running: rebuild the keys
+                publisher.restore();
+            }
             if (publisher.tryPromote()) {
                 log("event=index-version-published version=" + publisher.publishedVersion());
             }
