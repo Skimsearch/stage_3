@@ -28,6 +28,7 @@ public final class IndexingRole implements AutoCloseable {
             t.setDaemon(true);
             return t;
         });
+        publisher.restore();
         long ms = promoteEvery.toMillis();
         promoter.scheduleWithFixedDelay(this::promoteQuietly, ms, ms, TimeUnit.MILLISECONDS);
     }
@@ -44,6 +45,10 @@ public final class IndexingRole implements AutoCloseable {
 
     private void promoteQuietly() {
         try {
+            if (publisher.candidateVersion() == 0) {
+                // Hazelcast may have restarted while this process kept running: rebuild the keys
+                publisher.restore();
+            }
             if (publisher.tryPromote()) {
                 log("event=index-version-published version=" + publisher.publishedVersion());
             }
