@@ -36,8 +36,9 @@ import java.util.Set;
  *   INDEX_EVERY_SECONDS  default 10
  *   PROMOTE_EVERY_SECONDS default 1
  *
- * Run a single IndexMain until the task queue and a lock between Indexing processes
- * exist: two of them on the same datalake would index the same books at once.
+ * Building a version is guarded by a Hazelcast lock (HazelcastBuildLock), so two IndexMain
+ * never write at the same time. Run a single one anyway until the task queue exists: two of them on
+ * the same datalake would each index all the books, producing duplicate versions.
  *
  * After a restart it indexes every complete book again as a new version (re-indexing a
  * book replaces it, so the content is the same).
@@ -69,7 +70,8 @@ public final class IndexMain {
         IndexingRole role = new IndexingRole(
                 new VersionedIndexingService(datalake, new IndexVersionWriter(sharedIndexDir)),
                 new IndexPublisher(hz, sharedIndexDir),
-                promoteEvery);
+                promoteEvery,
+                HazelcastBuildLock.of(hz));
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             role.close();
