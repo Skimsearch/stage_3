@@ -29,8 +29,15 @@ import java.util.Set;
  *   HZ_CLUSTER_NAME      default "skimsearch"
  *   HZ_PORT              default 5701
  *   HZ_PUBLIC_ADDRESS    optional host:port other machines use to reach this member
+ *   HZ_MEMBERS           optional comma-separated host:port list of the Hazelcast members
+ *                        (this one included); enables the tcp-ip join so members on
+ *                        different machines form ONE cluster. Without it, this member
+ *                        runs alone.
  *   INDEX_EVERY_SECONDS  default 10
  *   PROMOTE_EVERY_SECONDS default 1
+ *
+ * Run a single IndexMain until the task queue and a lock between Indexing processes
+ * exist: two of them on the same datalake would index the same books at once.
  *
  * After a restart it indexes every complete book again as a new version (re-indexing a
  * book replaces it, so the content is the same).
@@ -89,7 +96,8 @@ public final class IndexMain {
         }
     }
 
-    private static Config hazelcastConfig(Map<String, String> env) {
+    /** Package-private so that a test can check the join settings without starting Hazelcast. */
+    static Config hazelcastConfig(Map<String, String> env) {
         Config config = new Config();
         config.setClusterName(env.getOrDefault("HZ_CLUSTER_NAME", "skimsearch"));
         config.setProperty("hazelcast.logging.type", "jdk");
@@ -100,8 +108,19 @@ public final class IndexMain {
         if (!publicAddress.isBlank()) {
             network.setPublicAddress(publicAddress);
         }
-        network.getJoin().getMulticastConfig().setEnabled(false);
-        network.getJoin().getAutoDetectionConfig().setEnabled(false);
+        var join = network.getJoin();
+        join.getMulticastConfig().setEnabled(false);
+        join.getAutoDetectionConfig().setEnabled(false);
+        String members = env.getOrDefault("HZ_MEMBERS", "");
+        if (!members.isBlank()) {
+            var tcpIp = join.getTcpIpConfig();
+            tcpIp.setEnabled(true);
+            for (String member : members.split(",")) {
+                if (!member.isBlank()) {
+                    tcpIp.addMember(member.trim());
+                }
+            }
+        }
         return config;
     }
 
