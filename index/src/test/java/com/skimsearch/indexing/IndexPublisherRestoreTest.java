@@ -99,4 +99,31 @@ class IndexPublisherRestoreTest {
         assertEquals(0, publisher.candidateVersion());
         assertEquals(0, publisher.publishedVersion());
     }
+
+    @Test
+    void corruptedOrEmptyManifestsAreSkipped() throws IOException {
+        fakeVersion(1);
+        Files.writeString(dir.resolve("index-v2.manifest.json"), "{not json");
+        Files.writeString(dir.resolve("index-v3.manifest.json"), "");
+
+        IndexPublisher publisher = new IndexPublisher(hz, dir);
+        publisher.restore();
+
+        assertEquals(1, publisher.candidateVersion());
+        assertEquals(1, hz.getMap(HazelcastNames.VERSIONS_MAP).size());
+    }
+
+    @Test
+    void promotionLeavesNoTemporaryFiles() throws IOException {
+        IndexPublisher publisher = new IndexPublisher(hz, dir);
+        publisher.announceCandidate(fakeVersion(1));
+        IMap<String, Long> loaded = hz.getMap(HazelcastNames.LOADED_MAP);
+        loaded.put("s1", 1L);
+        assertTrue(publisher.tryPromote());
+
+        try (var files = Files.list(dir)) {
+            assertTrue(files.noneMatch(f -> f.getFileName().toString().endsWith(".tmp")));
+        }
+        assertEquals("1", Files.readString(dir.resolve(IndexPublisher.PUBLISHED_FILE)).trim());
+    }
 }
