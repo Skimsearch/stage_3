@@ -3,6 +3,7 @@ package com.skimsearch.indexing;
 import com.hazelcast.config.Config;
 import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
+import com.skimsearch.common.HazelcastNames;
 import com.skimsearch.common.IndexManifest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -63,7 +64,7 @@ class IndexingRoleTest {
         assertEquals(1, publisher.candidateVersion());
         assertEquals(0, publisher.publishedVersion());
 
-        hz.<String, Long>getMap(IndexPublisher.LOADED_MAP).put("s1", 1L);
+        hz.<String, Long>getMap(HazelcastNames.LOADED_MAP).put("s1", 1L);
 
         long deadline = System.currentTimeMillis() + 3_000;
         while (publisher.publishedVersion() != 1 && System.currentTimeMillis() < deadline) {
