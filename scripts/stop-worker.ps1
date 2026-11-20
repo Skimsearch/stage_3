@@ -4,18 +4,20 @@ param(
     [switch]$Force
 )
 
-$pidFile = "logs/$RunId/pid-$WorkerId.txt"
-if (-not (Test-Path $pidFile)) {
-    Write-Warning "No existe $pidFile"
+$procs = Get-CimInstance Win32_Process -Filter "Name = 'java.exe' AND CommandLine LIKE '%-Dworker.id=$WorkerId%'"
+if (-not $procs) {
+    Write-Warning "No se encontró ningún proceso activo para '$WorkerId'."
     exit 1
 }
 
-$targetPid = [int](Get-Content $pidFile)
-if ($Force) {
-    Stop-Process -Id $targetPid -Force -ErrorAction SilentlyContinue
-    Write-Host "Worker '$WorkerId' (PID=$targetPid) terminado bruscamente (kill)." -ForegroundColor Yellow
-} else {
-    Stop-Process -Id $targetPid -ErrorAction SilentlyContinue
-    Write-Host "Señal de parada enviada a '$WorkerId' (PID=$targetPid)." -ForegroundColor Green
+foreach ($p in $procs) {
+    if ($Force) {
+        Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+        Write-Host "Worker '$WorkerId' (PID=$($p.ProcessId)) terminado bruscamente (kill)." -ForegroundColor Yellow
+    } else {
+        Stop-Process -Id $p.ProcessId -ErrorAction SilentlyContinue
+        Write-Host "Señal de parada enviada a '$WorkerId' (PID=$($p.ProcessId))." -ForegroundColor Green
+    }
 }
-Remove-Item $pidFile -ErrorAction SilentlyContinue
+
+Remove-Item "logs/$RunId/pid-$WorkerId.txt" -ErrorAction SilentlyContinue

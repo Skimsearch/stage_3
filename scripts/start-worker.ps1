@@ -52,10 +52,10 @@ if (-not (Test-Path $jarPath)) {
 }
 
 if ($Background) {
-    $proc = Start-Process -FilePath "java" -ArgumentList "-jar", $jarPath -PassThru -WindowStyle Hidden
+    $proc = Start-Process -FilePath "java" -ArgumentList "-Dworker.id=$WorkerId", "-jar", $jarPath -PassThru -WindowStyle Hidden
     New-Item -ItemType Directory -Force -Path "logs/$RunId" | Out-Null
     $proc.Id | Out-File -FilePath "logs/$RunId/pid-$WorkerId.txt" -Encoding ascii
-    Write-Host "Worker '$WorkerId' arrancado en segundo plano (PID=$($proc.Id), roles=$Roles, hzPort=$HzPort)" -ForegroundColor Cyan
+    Write-Host "Worker '$WorkerId' arrancado en segundo plano (roles=$Roles, hzPort=$HzPort)" -ForegroundColor Cyan
 } else {
-    java -jar $jarPath
+    java "-Dworker.id=$WorkerId" -jar $jarPath
 }
