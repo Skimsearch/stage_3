@@ -13,6 +13,7 @@
         <module>common</module>
         <module>search</module>
         <module>index</module>
+        <module>worker</module>
     </modules>
 
     <properties>
