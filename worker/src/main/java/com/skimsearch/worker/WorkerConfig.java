@@ -21,7 +21,15 @@ public record WorkerConfig(
         List<String> hzMembers,
         Path datalakeDir,
         Path sharedIndexDir,
-        Path localDir
+        Path localDir,
+        long leaseTtlMs,
+        long leaseRenewMs,
+        long reaperIntervalMs,
+        int maxAttempts,
+        int indexBatchSize,
+        long indexBatchFlushMs,
+        List<Integer> seedBooks,
+        boolean crawlStubTriggerIndex
 ) {
     public static WorkerConfig fromEnvironment() {
         return fromMap(System.getenv());
@@ -56,6 +64,24 @@ public record WorkerConfig(
         Path sharedIndexDir = Path.of(getOrDefault(env, "SHARED_INDEX_DIR", "data/shared-index"));
         Path localDir = Path.of(getOrDefault(env, "LOCAL_DIR", "data/local/" + workerId));
 
+        long leaseTtlMs = Long.parseLong(getOrDefault(env, "LEASE_TTL_MS", "6000"));
+        long leaseRenewMs = Long.parseLong(getOrDefault(env, "LEASE_RENEW_MS", "2000"));
+        long reaperIntervalMs = Long.parseLong(getOrDefault(env, "REAPER_INTERVAL_MS", "1000"));
+        int maxAttempts = Integer.parseInt(getOrDefault(env, "TASK_MAX_ATTEMPTS", "3"));
+        int indexBatchSize = Integer.parseInt(getOrDefault(env, "INDEX_BATCH_SIZE", "5"));
+        long indexBatchFlushMs = Long.parseLong(getOrDefault(env, "INDEX_BATCH_FLUSH_MS", "3000"));
+
+        String rawSeed = getOrDefault(env, "SEED_BOOKS", "");
+        List<Integer> seedBooks = rawSeed.isEmpty()
+                ? List.of()
+                : Arrays.stream(rawSeed.split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .map(Integer::parseInt)
+                        .toList();
+
+        boolean crawlStubTriggerIndex = Boolean.parseBoolean(getOrDefault(env, "CRAWL_STUB_TRIGGER_INDEX", "false"));
+
         return new WorkerConfig(
                 workerId,
                 Collections.unmodifiableSet(roles),
@@ -66,7 +92,15 @@ public record WorkerConfig(
                 hzMembers,
                 datalakeDir,
                 sharedIndexDir,
-                localDir
+                localDir,
+                leaseTtlMs,
+                leaseRenewMs,
+                reaperIntervalMs,
+                maxAttempts,
+                indexBatchSize,
+                indexBatchFlushMs,
+                seedBooks,
+                crawlStubTriggerIndex
         );
     }
 

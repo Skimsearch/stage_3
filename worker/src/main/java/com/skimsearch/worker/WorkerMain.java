@@ -38,6 +38,15 @@ public final class WorkerMain {
                 "cluster", config.hzClusterName(),
                 "members", hz.getCluster().getMembers().size());
 
+        DistributedTaskQueue taskQueue = new DistributedTaskQueue(hz, config.leaseTtlMs(), logger);
+        BatchingTaskSink taskSink = new BatchingTaskSink(
+                taskQueue,
+                config.workerId(),
+                config.indexBatchSize(),
+                config.indexBatchFlushMs(),
+                config.maxAttempts()
+        );
+
         IndexingRole indexingRole = null;
 
         if (config.roles().contains("search")) {
@@ -59,9 +68,16 @@ public final class WorkerMain {
         }
 
         if (config.roles().contains("crawl")) {
-            // Stub: lo integrará María mediante la interfaz TaskSink
             logger.log("role-started", "role", "crawl", "mode", "stub");
         }
+
+        // Sembrado idempotente opcional por variable SEED_BOOKS (ej. "1342,11,84,2701")
+        for (int bookId : config.seedBooks()) {
+            taskSink.submitIngest(bookId);
+        }
+
+        WorkerLoop workerLoop = new WorkerLoop(config, taskQueue, indexingRole, taskSink, logger);
+        workerLoop.start();
 
         CountDownLatch shutdownLatch = new CountDownLatch(1);
         AtomicBoolean stopped = new AtomicBoolean(false);
@@ -72,6 +88,9 @@ public final class WorkerMain {
                 return;
             }
             logger.log("worker-stopping");
+            workerLoop.close();
+            taskSink.close();
+
             if (finalIndexingRole != null) {
                 try {
                     finalIndexingRole.close();
