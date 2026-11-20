@@ -7,6 +7,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import com.skimsearch.common.TaskSink;
+
 /**
  * Implementación de TaskSink que agrupa libros listos en lotes de tamaño N
  * o cada T milisegundos para evitar crear una versión completa de SQLite por cada libro.

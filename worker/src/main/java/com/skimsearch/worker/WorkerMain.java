@@ -15,7 +15,6 @@ import com.skimsearch.indexing.IndexingRole;
 import com.skimsearch.indexing.VersionedIndexingService;
 import com.skimsearch.search.SearchConfig;
 import com.skimsearch.search.SearchMain;
-
 public final class WorkerMain {
 
     public static void main(String[] args) throws Exception {

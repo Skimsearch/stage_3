@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.skimsearch.common.TaskSink;
 import com.skimsearch.indexing.IndexingRole;
 
 public final class WorkerLoop implements AutoCloseable {

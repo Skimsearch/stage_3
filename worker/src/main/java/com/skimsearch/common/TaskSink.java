@@ -1,10 +1,10 @@
-package com.skimsearch.worker;
+package com.skimsearch.common;
 
 import java.util.List;
 
 /**
- * Contrato mínimo para que el rol de Ingestion encole trabajo
- * sin depender directamente del módulo worker (evita ciclos de dependencias).
+ * Contrato mínimo entre Ingestion y Worker.
+ * Vive en common para evitar dependencias circulares (worker -> ingest -> worker).
  */
 public interface TaskSink extends AutoCloseable {
     void bookReady(int bookId);
