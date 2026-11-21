@@ -12,3 +12,5 @@ deploy/gateway/search-upstream.conf
 deploy/gateway/temp/
 consul-data/
 results/dev/
+__pycache__/
+*.py[cod]
