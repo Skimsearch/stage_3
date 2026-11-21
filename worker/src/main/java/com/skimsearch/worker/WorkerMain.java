@@ -15,6 +15,9 @@ import com.skimsearch.indexing.IndexingRole;
 import com.skimsearch.indexing.VersionedIndexingService;
 import com.skimsearch.search.SearchConfig;
 import com.skimsearch.search.SearchMain;
+import com.skimsearch.crawl.CrawlingRole;
+import com.skimsearch.crawl.DatalakeWriter;
+import com.skimsearch.crawl.GutenbergClient;
 public final class WorkerMain {
 
     public static void main(String[] args) throws Exception {
@@ -46,6 +49,7 @@ public final class WorkerMain {
                 config.maxAttempts()
         );
 
+        CrawlingRole crawlingRole = null;
         IndexingRole indexingRole = null;
 
         if (config.roles().contains("search")) {
@@ -67,7 +71,17 @@ public final class WorkerMain {
         }
 
         if (config.roles().contains("crawl")) {
-            logger.log("role-started", "role", "crawl", "mode", "stub");
+
+            crawlingRole = new CrawlingRole(
+                    new GutenbergClient(),
+                    new DatalakeWriter(config.datalakeDir())
+            );
+
+            logger.log(
+                    "role-started",
+                    "role", "crawl",
+                    "mode", "gutenberg"
+            );
         }
 
         // Sembrado idempotente opcional por variable SEED_BOOKS (ej. "1342,11,84,2701")
@@ -75,7 +89,7 @@ public final class WorkerMain {
             taskSink.submitIngest(bookId);
         }
 
-        WorkerLoop workerLoop = new WorkerLoop(config, taskQueue, indexingRole, taskSink, logger);
+        WorkerLoop workerLoop = new WorkerLoop(config, taskQueue, indexingRole, crawlingRole, taskSink, logger);
         workerLoop.start();
 
         CountDownLatch shutdownLatch = new CountDownLatch(1);

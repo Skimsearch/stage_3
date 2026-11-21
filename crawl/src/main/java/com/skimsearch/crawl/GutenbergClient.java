@@ -7,7 +7,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 
-public final class GutenbergClient {
+public final class GutenbergClient implements BookDownloader {
 
     private static final String START_MARKER =
             "*** START OF THE PROJECT GUTENBERG EBOOK";
@@ -23,6 +23,7 @@ public final class GutenbergClient {
                 .build();
     }
 
+    @Override
     public BookContent download(int bookId)
             throws IOException, InterruptedException {
 

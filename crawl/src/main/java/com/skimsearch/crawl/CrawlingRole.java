@@ -2,14 +2,14 @@ package com.skimsearch.crawl;
 
 public final class CrawlingRole {
 
-    private final GutenbergClient client;
+    private final BookDownloader downloader;
     private final DatalakeWriter writer;
 
     public CrawlingRole(
-            GutenbergClient client,
+            BookDownloader downloader,
             DatalakeWriter writer
     ) {
-        this.client = client;
+        this.downloader = downloader;
         this.writer = writer;
     }
 
@@ -24,7 +24,7 @@ public final class CrawlingRole {
         }
 
         GutenbergClient.BookContent content =
-                client.download(bookId);
+                downloader.download(bookId);
 
         boolean written =
                 writer.write(bookId, content);
