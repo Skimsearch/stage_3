@@ -11,6 +11,7 @@
 
     <modules>
         <module>common</module>
+        <module>crawl</module>
         <module>search</module>
         <module>index</module>
         <module>worker</module>

@@ -21,6 +21,11 @@
         </dependency>
         <dependency>
             <groupId>com.skimsearch</groupId>
+            <artifactId>crawl</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.skimsearch</groupId>
             <artifactId>index</artifactId>
             <version>${project.version}</version>
         </dependency>
