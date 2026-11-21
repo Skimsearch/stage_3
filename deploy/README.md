@@ -1,39 +1,39 @@
-# Guía de Despliegue — SkimSearch Stage 3
+# Deployment Guide — SkimSearch Stage 3
 
-Sistema distribuido de ingesta, indexación y búsqueda ejecutado mediante un **binario único (`worker.jar`)** que activa roles dinámicamente por configuración y coordina tareas, bloqueos y metadatos de versión sobre un clúster **Hazelcast (`skimsearch`)**.
-
----
-
-## 1. Arquitectura y Decisiones de Despliegue
-
-* **Programa trabajador único (`worker`):** Cada nodo ejecuta `worker/target/worker.jar` configurando su identidad (`WORKER_ID`) y sus roles (`WORKER_ROLES`: `crawl`, `index`, `search`, o combinaciones separadas por comas).
-* **Coordinación y tolerancia a fallos (Hazelcast):**
-  * **Colas de trabajo:** `tasks-pending-ingest` y `tasks-pending-index` (`IQueue`), consumidas de forma atómica (`poll()`) según los roles activos de cada trabajador.
-  * **Tolerancia a caídas (*Leases* + *Reaper*):** Mapa `tasks-inflight` combinado con `task-leases` con TTL (`LEASE_TTL_MS`), renovación periódica (`LEASE_RENEW_MS`) y un hilo *reaper* en todos los nodos (`REAPER_INTERVAL_MS`) que reencola tareas huérfanas sin depender de sincronización de relojes entre máquinas.
-  * **Exclusión mutua de indexación:** `HazelcastBuildLock` serializa la construcción y publicación de versiones de índice.
-  * **Agrupación por lotes (`BatchingTaskSink`):** Agrupa libros listos en lotes de tamaño `INDEX_BATCH_SIZE` o cada `INDEX_BATCH_FLUSH_MS` ms antes de encolar tareas `index`, evitando generar una versión completa de SQLite por cada libro individual.
-* **Almacenamiento y Diseños:**
-  * **Diseño A:** Documentos en `DATALAKE_DIR` (carpeta compartida) e índices SQLite inmutables por versión en `SHARED_INDEX_DIR`. Cada nodo `search` copia la versión publicada a su `LOCAL_DIR` antes de responder `200` en `GET /health/ready`.
-  * **Diseño B:** Documentos en `DATALAKE_DIR` e índice invertido repartido en la memoria RAM del clúster Hazelcast (`IMap`), eliminando la copia de ficheros `.db` por nodo.
-* **Enrutado y descubrimiento (`deploy/gateway/`):** Consul descubre instancias saludables mediante `GET /health/ready` y `consul-template` regenera el *upstream* de Nginx, que reintenta automáticamente ante códigos `503` (`proxy_next_upstream error timeout http_503`).
+Distributed ingestion, indexing, and search system executed via a **single binary (`worker.jar`)** that dynamically activates roles by configuration and coordinates tasks, leases, and index version metadata across a **Hazelcast (`skimsearch`)** cluster.
 
 ---
 
-## 2. Diagramas de Despliegue
+## 1. Architecture and Deployment Decisions
 
-### 2.1. Diseño A — Índice SQLite versionado en carpeta compartida + réplica local en Search
+* **Single worker binary (`worker`):** Each node runs `worker/target/worker.jar` configured with its identity (`WORKER_ID`) and roles (`WORKER_ROLES`: `crawl`, `index`, `search`, or comma-separated combinations).
+* **Coordination and fault tolerance (Hazelcast):**
+  * **Work queues:** `tasks-pending-ingest` and `tasks-pending-index` (`IQueue`), consumed atomically (`poll()`) according to each worker's active roles.
+  * **Crash recovery (*Leases* + *Reaper*):** `tasks-inflight` map paired with `task-leases` with TTL (`LEASE_TTL_MS`), periodic renewal (`LEASE_RENEW_MS`), and a *reaper* thread across nodes (`REAPER_INTERVAL_MS`) that requeues orphaned tasks without relying on clock synchronization across machines.
+  * **Indexing mutual exclusion:** `HazelcastBuildLock` serializes index version builds and publication.
+  * **Batching (`BatchingTaskSink`):** Groups ready books into batches of size `INDEX_BATCH_SIZE` or every `INDEX_BATCH_FLUSH_MS` ms before enqueueing `index` tasks, avoiding full SQLite index builds per individual book.
+* **Storage and Designs:**
+  * **Design A:** Documents in `DATALAKE_DIR` (shared folder) and immutable versioned SQLite indexes in `SHARED_INDEX_DIR`. Each `search` node copies the published version to its `LOCAL_DIR` before returning `200` on `GET /health/ready`.
+  * **Design B:** Documents in `DATALAKE_DIR` and an inverted index distributed across Hazelcast cluster RAM (`IMap`), eliminating per-node `.db` file copying.
+* **Routing and service discovery (`deploy/gateway/`):** Consul discovers healthy instances via `GET /health/ready`, `consul-template` regenerates the Nginx *upstream*, and Nginx automatically retries on `503` responses (`proxy_next_upstream error timeout http_503`).
+
+---
+
+## 2. Deployment Diagrams
+
+### 2.1. Design A — Versioned SQLite Index on Shared Storage + Local Replica on Search
 
 ```mermaid
 flowchart TB
-    Client([Cliente HTTP]) -->|GET /search, /books/id| Nginx
+    Client([HTTP Client]) -->|GET /search, /books/id| Nginx
 
-    subgraph GatewayNode["Nodo Gateway (Puerta de enlace)"]
+    subgraph GatewayNode["Gateway Node"]
         Nginx["Nginx Reverse Proxy<br/>(proxy_next_upstream http_503)"]
         ConsulSrv["Consul Server + consul-template<br/>(Health check: GET /health/ready)"]
-        ConsulSrv -.->|Actualiza upstream| Nginx
+        ConsulSrv -.->|Updates upstream| Nginx
     end
 
-    subgraph Cluster["Clúster Distribuido SkimSearch (Red Lab / TCP-IP)"]
+    subgraph Cluster["SkimSearch Distributed Cluster (Lab Network / TCP-IP)"]
         subgraph Node1["Worker Node 1 (WORKER_ID=w1 | ROLES=crawl,index)"]
             W1Loop["WorkerLoop + Reaper"]
             Crawl1["Ingestion Role<br/>(BatchingTaskSink)"]
@@ -44,106 +44,106 @@ flowchart TB
         end
 
         subgraph Node2["Worker Node 2 (WORKER_ID=w2 | ROLES=search)"]
-            Search2["Search Role (:7003)<br/>(VersionedIndex + SQLite local)"]
-            Local2[("LOCAL_DIR<br/>Copia SQLite activa")]
+            Search2["Search Role (:7003)<br/>(VersionedIndex + local SQLite)"]
+            Local2[("LOCAL_DIR<br/>Active SQLite copy")]
             HZ2["Hazelcast Member (:5702)"]
             Search2 --> Local2
         end
 
         subgraph Node3["Worker Node 3 (WORKER_ID=w3 | ROLES=search)"]
-            Search3["Search Role (:7004)<br/>(VersionedIndex + SQLite local)"]
-            Local3[("LOCAL_DIR<br/>Copia SQLite activa")]
+            Search3["Search Role (:7004)<br/>(VersionedIndex + local SQLite)"]
+            Local3[("LOCAL_DIR<br/>Active SQLite copy")]
             HZ3["Hazelcast Member (:5703)"]
             Search3 --> Local3
         end
 
-        HZ1 <-->|"Clúster 'skimsearch'<br/>Colas: pending-ingest, pending-index<br/>Mapas: inflight, leases(TTL), index-meta"| HZ2
+        HZ1 <-->|"Cluster 'skimsearch'<br/>Queues: pending-ingest, pending-index<br/>Maps: inflight, leases(TTL), index-meta"| HZ2
         HZ2 <--> HZ3
         HZ1 <--> HZ3
     end
 
-    subgraph SharedStorage["Almacenamiento Compartido de Red (NFS / SMB / MinIO)"]
-        Datalake[("DATALAKE_DIR<br/>Libros completos")]
+    subgraph SharedStorage["Shared Network Storage (NFS / SMB / MinIO)"]
+        Datalake[("DATALAKE_DIR<br/>Complete books")]
         SharedIdx[("SHARED_INDEX_DIR<br/>index-v1.db, index-v2.db...")]
     end
 
-    Nginx -->|Balanceo HTTP| Search2
-    Nginx -->|Balanceo HTTP| Search3
-    Search2 -.->|Registro + /health/ready| ConsulSrv
-    Search3 -.->|Registro + /health/ready| ConsulSrv
+    Nginx -->|HTTP Load Balancing| Search2
+    Nginx -->|HTTP Load Balancing| Search3
+    Search2 -.->|Registration + /health/ready| ConsulSrv
+    Search3 -.->|Registration + /health/ready| ConsulSrv
 
-    Crawl1 -->|Escribe libros| Datalake
-    Index1 -->|Lee libros| Datalake
-    Index1 -->|Publica nueva versión .db| SharedIdx
-    SharedIdx -.->|Descarga versión publicada| Local2
-    SharedIdx -.->|Descarga versión publicada| Local3
+    Crawl1 -->|Writes books| Datalake
+    Index1 -->|Reads books| Datalake
+    Index1 -->|Publishes new .db version| SharedIdx
+    SharedIdx -.->|Downloads published version| Local2
+    SharedIdx -.->|Downloads published version| Local3
 ```
 
-### 2.2. Diseño B — Índice invertido distribuido en la RAM de Hazelcast
+### 2.2. Design B — Distributed Inverted Index in Hazelcast RAM
 
 ```mermaid
 flowchart TB
-    Client([Cliente HTTP]) -->|GET /search, /books/id| Nginx
+    Client([HTTP Client]) -->|GET /search, /books/id| Nginx
 
-    subgraph GatewayNode["Nodo Gateway"]
+    subgraph GatewayNode["Gateway Node"]
         Nginx["Nginx Reverse Proxy"]
         ConsulSrv["Consul Server + consul-template"]
-        ConsulSrv -.->|Actualiza upstream| Nginx
+        ConsulSrv -.->|Updates upstream| Nginx
     end
 
-    subgraph Cluster["Clúster Distribuido SkimSearch (RAM Compartida Hazelcast)"]
+    subgraph Cluster["SkimSearch Distributed Cluster (Hazelcast Shared RAM)"]
         subgraph Node1["Worker Node 1 (WORKER_ID=w1 | ROLES=crawl,index)"]
             Crawl1["Ingestion Role"]
             Index1["Indexing Role<br/>(Distributed Index Writer)"]
-            HZ1["Hazelcast Member (:5701)<br/>Particiones RAM del Índice"]
+            HZ1["Hazelcast Member (:5701)<br/>Index RAM Partitions"]
         end
 
         subgraph Node2["Worker Node 2 (WORKER_ID=w2 | ROLES=search)"]
             Search2["Search Role (:7003)<br/>(DistributedIndexReader)"]
-            HZ2["Hazelcast Member (:5702)<br/>Particiones RAM del Índice"]
+            HZ2["Hazelcast Member (:5702)<br/>Index RAM Partitions"]
         end
 
         subgraph Node3["Worker Node 3 (WORKER_ID=w3 | ROLES=search)"]
             Search3["Search Role (:7004)<br/>(DistributedIndexReader)"]
-            HZ3["Hazelcast Member (:5703)<br/>Particiones RAM del Índice"]
+            HZ3["Hazelcast Member (:5703)<br/>Index RAM Partitions"]
         end
 
-        HZ1 <-->|"Particionado automático + Backups<br/>IMap: inverted-index, book-metadata<br/>Colas y Leases de tareas"| HZ2
+        HZ1 <-->|"Automatic Partitioning + Backups<br/>IMap: inverted-index, book-metadata<br/>Task queues and leases"| HZ2
         HZ2 <--> HZ3
         HZ1 <--> HZ3
     end
 
-    Datalake[("DATALAKE_DIR<br/>Carpeta compartida de documentos")]
+    Datalake[("DATALAKE_DIR<br/>Shared document folder")]
 
     Nginx --> Search2
     Nginx --> Search3
     Search2 -.->|/health/ready| ConsulSrv
     Search3 -.->|/health/ready| ConsulSrv
 
-    Crawl1 -->|Guarda documentos| Datalake
-    Index1 -->|Lee documentos| Datalake
-    Index1 -->|Escribe postings y metadatos| HZ1
-    Search2 -->|Consultas remotas en RAM| HZ2
-    Search3 -->|Consultas remotas en RAM| HZ3
+    Crawl1 -->|Saves documents| Datalake
+    Index1 -->|Reads documents| Datalake
+    Index1 -->|Writes postings and metadata| HZ1
+    Search2 -->|Remote RAM queries| HZ2
+    Search3 -->|Remote RAM queries| HZ3
 ```
 
 ---
 
-## 3. Requisitos Previos
+## 3. Prerequisites
 
-* **Java 17+** y **Maven 3.8+**.
-* **Red:** Puertos abiertos entre los ordenadores del laboratorio:
-  * `5701+`: Comunicación interna del clúster Hazelcast (`portAutoIncrement=false`).
-  * `7003+`: API HTTP de cada instancia `search`.
-  * `80` / `8080`: Puerto público de Nginx en el nodo *gateway*.
-  * `8500`: API HTTP de Consul en el nodo *gateway*.
-* **Almacenamiento compartido:** Carpeta de red montada en todos los nodos que ejecuten `crawl`, `index` o `search` (Diseño A).
+* **Java 17+** and **Maven 3.8+**.
+* **Network:** Open ports across lab machines:
+  * `5701+`: Internal Hazelcast cluster communication (`portAutoIncrement=false`).
+  * `7003+`: HTTP API for each `search` instance.
+  * `80` / `8080`: Public Nginx port on the *gateway* node.
+  * `8500`: Consul HTTP API on the *gateway* node.
+* **Shared storage:** Network folder mounted on all nodes running `crawl`, `index`, or `search` (Design A).
 
 ---
 
-## 4. Compilación
+## 4. Build
 
-Desde la raíz del repositorio:
+From the repository root:
 
 ```powershell
 # Windows (PowerShell)
@@ -155,44 +155,44 @@ Desde la raíz del repositorio:
 mvn clean package -DskipTests
 ```
 
-Genera el ejecutable autocontenido en `worker/target/worker.jar`.
+Produces the self-contained executable JAR at `worker/target/worker.jar`.
 
 ---
 
-## 5. Variables de Entorno
+## 5. Environment Variables
 
-| Variable | Obligatoria | Por defecto | Descripción |
+| Variable | Required | Default | Description |
 | :--- | :---: | :--- | :--- |
-| `RUN_ID` | Sí (pruebas) | `local-dev` | Identificador de ejecución: `<diseño>-<servicio>-<n>nodes-runNN` (ej. `A-worker-2nodes-run01`). |
-| `WORKER_ID` | Sí | Aleatorio | Identificador único del proceso (ej. `w1`, `w2`). |
-| `WORKER_ROLES` | Sí | `search` | Roles activos separados por comas: `crawl`, `index`, `search`. |
-| `HZ_CLUSTER_NAME` | No | `skimsearch` | Nombre del clúster Hazelcast. |
-| `HZ_PORT` | Sí | `5701` | Puerto TCP de Hazelcast en este proceso (debe ser único por IP). |
-| `HZ_PUBLIC_ADDRESS` | En multi-PC | *(vacío)* | IP:puerto visible por el resto de PCs (ej. `192.168.1.11:5701`). |
-| `HZ_MEMBERS` | Sí | `127.0.0.1` | Lista separada por comas de miembros TCP-IP del clúster. |
-| `DATALAKE_DIR` | Sí (`crawl`/`index`) | `data/datalake` | Ruta a la carpeta compartida del datalake. |
-| `SHARED_INDEX_DIR` | Sí (`index`/`search` A) | `data/shared-index` | Ruta a la carpeta compartida de versiones del índice. |
-| `LOCAL_DIR` | Sí (`search` A) | `data/local/<id>` | Directorio local donde `search` copia su SQLite activo. |
-| `SEARCH_PORT` | Sí (`search`) | `7003` | Puerto HTTP del servicio Search. |
-| `SEARCH_THREADS` | No | `4` | Hilos del servidor HTTP de Search. |
-| `CONSUL_URL` | Con gateway | *(vacío)* | URL del agente Consul (ej. `http://192.168.1.10:8500`). |
-| `SEARCH_ADVERTISE_HOST` | Con gateway | `127.0.0.1` | IP con la que Search se registra en Consul. |
-| `LEASE_TTL_MS` | No | `6000` | Tiempo de vida (ms) del *lease* de una tarea reclamada. |
-| `LEASE_RENEW_MS` | No | `2000` | Periodo (ms) de renovación del *lease* mientras la tarea corre. |
-| `REAPER_INTERVAL_MS` | No | `1000` | Frecuencia (ms) con la que el *reaper* busca *leases* caducados. |
-| `TASK_MAX_ATTEMPTS` | No | `3` | Número máximo de intentos antes de mover una tarea a `tasks-failed`. |
-| `INDEX_BATCH_SIZE` | No | `5` | Número de libros listos agrupados antes de crear una tarea `index`. |
-| `INDEX_BATCH_FLUSH_MS` | No | `3000` | Tiempo máximo (ms) antes de volcar un lote parcial de `index`. |
-| `SEED_BOOKS` | No | *(vacío)* | Lista opcional de IDs iniciales para encolar tareas `ingest` al arrancar. |
+| `RUN_ID` | Yes (tests) | `local-dev` | Run identifier: `<design>-<service>-<n>nodes-runNN` (e.g., `A-worker-2nodes-run01`). |
+| `WORKER_ID` | Yes | Random | Unique process identifier (e.g., `w1`, `w2`). |
+| `WORKER_ROLES` | Yes | `search` | Comma-separated active roles: `crawl`, `index`, `search`. |
+| `HZ_CLUSTER_NAME` | No | `skimsearch` | Hazelcast cluster name. |
+| `HZ_PORT` | Yes | `5701` | Hazelcast TCP port on this process (must be unique per IP). |
+| `HZ_PUBLIC_ADDRESS` | Multi-PC | *(empty)* | `IP:port` reachable by other PCs (e.g., `192.168.1.11:5701`). |
+| `HZ_MEMBERS` | Yes | `127.0.0.1` | Comma-separated list of TCP-IP cluster members. |
+| `DATALAKE_DIR` | Yes (`crawl`/`index`) | `data/datalake` | Path to shared datalake directory. |
+| `SHARED_INDEX_DIR` | Yes (`index`/`search` A) | `data/shared-index` | Path to shared index versions directory. |
+| `LOCAL_DIR` | Yes (`search` A) | `data/local/<id>` | Local directory where `search` copies its active SQLite index. |
+| `SEARCH_PORT` | Yes (`search`) | `7003` | HTTP port for the Search service. |
+| `SEARCH_THREADS` | No | `4` | Search HTTP server worker threads. |
+| `CONSUL_URL` | With gateway | *(empty)* | Consul agent URL (e.g., `http://192.168.1.10:8500`). |
+| `SEARCH_ADVERTISE_HOST` | With gateway | `127.0.0.1` | Host/IP advertised by Search to Consul. |
+| `LEASE_TTL_MS` | No | `6000` | Lease time-to-live (ms) for a claimed task. |
+| `LEASE_RENEW_MS` | No | `2000` | Lease renewal interval (ms) while a task is running. |
+| `REAPER_INTERVAL_MS` | No | `1000` | Interval (ms) at which the *reaper* checks for expired leases. |
+| `TASK_MAX_ATTEMPTS` | No | `3` | Maximum attempts before moving a task to `tasks-failed`. |
+| `INDEX_BATCH_SIZE` | No | `5` | Number of ready books grouped before creating an `index` task. |
+| `INDEX_BATCH_FLUSH_MS` | No | `3000` | Max wait time (ms) before flushing a partial `index` batch. |
+| `SEED_BOOKS` | No | *(empty)* | Optional list of initial book IDs to enqueue as `ingest` tasks on startup. |
 
 ---
 
-## 6. Despliegue en el Laboratorio (Varios Ordenadores)
+## 6. Lab Deployment (Multiple Machines)
 
-### Paso A — Nodo Gateway (Consul + Nginx)
-En la máquina designada como puerta de enlace, seguir las instrucciones de [`deploy/gateway/README.md`](gateway/README.md) para arrancar Consul Server, `consul-template` y Nginx.
+### Step A — Gateway Node (Consul + Nginx)
+On the machine acting as gateway, follow [`deploy/gateway/README.md`](gateway/README.md) to start Consul Server, `consul-template`, and Nginx.
 
-### Paso B — Nodos Worker (Ejemplo con 3 PCs en red `192.168.1.x`)
+### Step B — Worker Nodes (Example with 3 PCs on `192.168.1.x`)
 
 * **PC 1 (`192.168.1.11`) — Roles `crawl,index`:**
   ```bash
@@ -207,7 +207,7 @@ En la máquina designada como puerta de enlace, seguir las instrucciones de [`de
   java -jar worker/target/worker.jar
   ```
 
-* **PC 2 (`192.168.1.12`) — Rol `search`:**
+* **PC 2 (`192.168.1.12`) — Role `search`:**
   ```bash
   export RUN_ID="A-e2e-3nodes-run01"
   export WORKER_ID="w2"
@@ -223,31 +223,31 @@ En la máquina designada como puerta de enlace, seguir las instrucciones de [`de
   java -jar worker/target/worker.jar
   ```
 
-* **PC 3 (`192.168.1.13`) — Rol `search`:**
-  Idéntico al PC 2 cambiando `WORKER_ID="w3"`, `HZ_PUBLIC_ADDRESS="192.168.1.13:5701"`, `SEARCH_ADVERTISE_HOST="192.168.1.13"` y `LOCAL_DIR="/tmp/skimsearch-w3"`.
+* **PC 3 (`192.168.1.13`) — Role `search`:**
+  Same as PC 2 with `WORKER_ID="w3"`, `HZ_PUBLIC_ADDRESS="192.168.1.13:5701"`, `SEARCH_ADVERTISE_HOST="192.168.1.13"`, and `LOCAL_DIR="/tmp/skimsearch-w3"`.
 
 ---
 
-## 7. Scripts Auxiliares y Análisis de Tolerancia a Fallos
+## 7. Helper Scripts and Fault-Tolerance Analysis
 
-### Gestión del ciclo de vida (Windows PowerShell)
-* **Arrancar worker en segundo plano:**
+### Lifecycle management (Windows PowerShell)
+* **Start a worker in background:**
   ```powershell
   .\scripts\start-worker.ps1 -WorkerId w1 -Roles "crawl,index" -RunId A-worker-2nodes-run01 -HzPort 5701 -Background
   ```
-* **Parada ordenada o caída forzada (`-Force`):**
+* **Graceful stop or forced crash (`-Force`):**
   ```powershell
   .\scripts\stop-worker.ps1 -WorkerId w2 -RunId A-worker-2nodes-run01 -Force
   ```
-* **Experimento automatizado de caída y relevo (*failover*):**
+* **Automated *failover* experiment:**
   ```powershell
   .\scripts\run-failover-experiment.ps1 -RunId A-worker-2nodes-run04 -LeaseTtlMs 4000 -LeaseRenewMs 1500 -ReaperIntervalMs 500
   ```
 
-### Logs y extracción de métricas
-Cada proceso escribe eventos estructurados (`ts=<Instant> event=<nombre> workerId=<id> ...`) en `logs/<RUN_ID>/worker-<WORKER_ID>.log`.
+### Logs and metrics extraction
+Each process writes structured events (`ts=<Instant> event=<name> workerId=<id> ...`) to `logs/<RUN_ID>/worker-<WORKER_ID>.log`.
 
-Para generar automáticamente la **matriz trabajador × tarea** y calcular los **tiempos de relevo ante caída** tras una ejecución:
+To generate the **worker × task matrix** and compute **failover reclaim times** after a run:
 
 ```bash
 java scripts/worker/AnalyzeWorkerLogs.java A-worker-2nodes-run04
