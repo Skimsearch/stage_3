@@ -64,7 +64,7 @@ def load_expected(path):
         return json.load(f)
 
 
-def expected_book_ids(expected, query):
+def expected_result(expected, query):
     if expected is None:
         return None
 
@@ -73,36 +73,67 @@ def expected_book_ids(expected, query):
     if value is None:
         return None
 
-    if isinstance(value, list):
-        return {int(x) for x in value}
-
+    # New preferred format:
+    # {
+    #   "query": {
+    #       "total": 3,
+    #       "top": [10, 20, 30]
+    #   }
+    # }
     if isinstance(value, dict):
-        books = value.get("bookIds", value.get("books"))
+        top = value.get("top")
+        total = value.get("total")
 
-        if books is not None:
-            return {int(x) for x in books}
+        if top is None:
+            return None
+
+        return {
+            "total": int(total) if total is not None else len(top),
+            "top": [int(x) for x in top],
+        }
+
+    # Backwards compatibility with the old format:
+    # "query": [10, 20, 30]
+    if isinstance(value, list):
+        ids = [int(x) for x in value]
+
+        return {
+            "total": len(ids),
+            "top": ids,
+        }
 
     return None
 
 
-def response_book_ids(payload):
+def response_result(payload):
     results = payload.get("results", [])
 
-    ids = set()
+    ids = []
 
     for item in results:
         if "bookId" in item:
-            ids.add(int(item["bookId"]))
+            ids.append(int(item["bookId"]))
         elif "book_id" in item:
-            ids.add(int(item["book_id"]))
+            ids.append(int(item["book_id"]))
 
-    return ids
+    total = payload.get("total")
+
+    if total is None:
+        total = len(ids)
+
+    return {
+        "total": int(total),
+        "top": ids,
+    }
 
 
 def make_request(base_url, query, timeout_s, expected):
     request_id = str(uuid.uuid4())
 
-    encoded_query = urllib.parse.urlencode({"q": query})
+    encoded_query = urllib.parse.urlencode({
+        "q": query,
+        "limit": 100,
+    })
     url = f"{base_url.rstrip('/')}/search?{encoded_query}"
 
     request = urllib.request.Request(
@@ -143,16 +174,20 @@ def make_request(base_url, query, timeout_s, expected):
 
             payload = json.loads(body)
 
-            expected_ids = expected_book_ids(
+            expected_value = expected_result(
                 expected,
                 query
             )
 
-            if expected_ids is None:
+            if expected_value is None:
                 correct = 200 <= status < 300
             else:
-                actual_ids = response_book_ids(payload)
-                correct = actual_ids == expected_ids
+                actual_value = response_result(payload)
+
+                correct = (
+                    actual_value["total"] == expected_value["total"]
+                    and actual_value["top"] == expected_value["top"]
+                )
 
     except urllib.error.HTTPError as e:
         status = e.code
@@ -420,6 +455,12 @@ def main():
         default=None
     )
 
+    parser.add_argument(
+        "--out",
+        default="results",
+        help="Base output directory"
+    )
+
     args = parser.parse_args()
 
     if args.concurrency < 1:
@@ -442,7 +483,7 @@ def main():
     expected = load_expected(args.expected)
 
     output_dir = (
-        Path("results") / run_id
+        Path(args.out) / run_id
     )
 
     output_dir.mkdir(

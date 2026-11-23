@@ -10,18 +10,25 @@ Recommended file:
 
 experiments/expected/search-results.json
 
-Example:
+Preferred format:
 
 {
-  "love": [1342, 84],
-  "alice": [11],
-  "pride": [1342]
+  "whale": {
+    "total": 3,
+    "top": [84, 2701, 1513]
+  },
+  "alice": {
+    "total": 1,
+    "top": [11]
+  }
 }
 
-Each key is a query from experiments/queries.txt.
+For each query:
 
-Each value contains the expected book IDs for that query for the common corpus
-used in the experiment.
+- total is the total number of matching books.
+- top is the ordered list of book IDs returned by Search.
+- Order matters and must follow the Search contract.
+- The load generator sends limit=100.
 
 Both distributed designs must use the same corpus, tokenizer, query set and
 logical expected results.
@@ -37,6 +44,17 @@ Run the load generator with:
 
 --expected experiments/expected/search-results.json
 
+The old list-only format is still accepted for compatibility:
+
+{
+  "whale": [84, 2701, 1513]
+}
+
+In that format, total is assumed to be the length of the list.
+
 If --expected is omitted, the generator may be used for connectivity or
 development checks, but HTTP success alone is not evidence of query correctness
 for the final comparative experiments.
+
+Correctness comparisons are only valid for fixed-corpus runs where both designs
+use the same logical document set.

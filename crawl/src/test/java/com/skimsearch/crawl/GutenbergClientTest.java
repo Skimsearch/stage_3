@@ -33,4 +33,28 @@ class GutenbergClientTest {
 
         assertFalse(result.body().contains("END OF"));
     }
+
+    @Test
+void splitsLegacyThisMarkerFormat() {
+
+    String text = """
+            Title: Legacy Test Book
+            Author: Test Author
+
+            *** START OF THIS PROJECT GUTENBERG EBOOK LEGACY TEST ***
+
+            Legacy body content.
+
+            *** END OF THIS PROJECT GUTENBERG EBOOK LEGACY TEST ***
+            Footer
+            """;
+
+    GutenbergClient.BookContent result =
+            GutenbergClient.split(text);
+
+    assertTrue(result.header().contains("Title: Legacy Test Book"));
+    assertTrue(result.header().contains("Author: Test Author"));
+    assertTrue(result.body().contains("Legacy body content."));
+    assertFalse(result.body().contains("END OF"));
+}
 }
