@@ -1,11 +1,14 @@
 # Expected Search Results
 
-This folder contains the expected Search results used by the Stage 3 load
-generator to validate query correctness.
+This folder contains the logical expected Search results used by the Stage 3
+load generator to validate query correctness.
 
-Files follow this naming convention:
+Expected results describe the logical index content and do not depend on the
+runtime index version number.
 
-experiments/expected/version-{N}.json
+Recommended file:
+
+experiments/expected/search-results.json
 
 Example:
 
@@ -17,19 +20,23 @@ Example:
 
 Each key is a query from experiments/queries.txt.
 
-Each value is the list of book IDs expected for that query in a specific logical
-index version.
+Each value contains the expected book IDs for that query for the common corpus
+used in the experiment.
 
-The expected results must correspond to the same logical index state used in
-both compared Stage 3 designs.
+Both distributed designs must use the same corpus, tokenizer, query set and
+logical expected results.
 
-The load generator receives the expected-results file with:
+Runtime index versions may differ between designs or runs because publication,
+batching and flush timing can produce different version numbers even when the
+logical index content is equivalent.
 
---expected experiments/expected/version-1.json
+For this reason, the index version returned by Search is recorded as experiment
+metadata but is not used to select the expected result set.
 
-If --expected is omitted, the load generator can still be used for development
-or connectivity checks, but HTTP success alone must not be interpreted as proof
-of query correctness in the final experiments.
+Run the load generator with:
 
-Final expected-results files should be generated or validated by the Search
-workload owner using the same corpus and index version used in the paired runs.
+--expected experiments/expected/search-results.json
+
+If --expected is omitted, the generator may be used for connectivity or
+development checks, but HTTP success alone is not evidence of query correctness
+for the final comparative experiments.

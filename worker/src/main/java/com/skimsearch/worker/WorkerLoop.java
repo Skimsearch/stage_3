@@ -126,14 +126,13 @@ public final class WorkerLoop implements AutoCloseable {
         }
 
     if ("ingest".equals(task.getType())) {
-
         if (crawlingRole == null) {
             throw new IllegalStateException(
-                    "CrawlingRole is not active on this worker");
+                    "CrawlingRole is not active on this worker"
+            );
         }
 
         for (int bookId : task.getBookIds()) {
-
             CrawlingRole.Result result =
                     crawlingRole.ingestBook(bookId);
 
@@ -143,6 +142,13 @@ public final class WorkerLoop implements AutoCloseable {
                     "result", result.name()
             );
 
+            /*
+            * Always announce a READY book, including ALREADY_READY.
+            *
+            * A worker may fail after publishing the document but before
+            * completing the handoff to Indexing. On retry, the next worker
+            * observes ALREADY_READY and must still resume the pipeline.
+            */
             taskSink.bookReady(bookId);
         }
 
