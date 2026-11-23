@@ -10,12 +10,14 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import com.skimsearch.common.TaskSink;
 import com.skimsearch.indexing.IndexingRole;
+import com.skimsearch.crawl.CrawlingRole;
 
 public final class WorkerLoop implements AutoCloseable {
 
     private final WorkerConfig config;
     private final DistributedTaskQueue queue;
     private final IndexingRole indexingRole;
+    private final CrawlingRole crawlingRole;
     private final TaskSink taskSink;
     private final WorkerLogger logger;
 
@@ -27,11 +29,13 @@ public final class WorkerLoop implements AutoCloseable {
     public WorkerLoop(WorkerConfig config,
                       DistributedTaskQueue queue,
                       IndexingRole indexingRole,
+                      CrawlingRole crawlingRole,
                       TaskSink taskSink,
                       WorkerLogger logger) {
         this.config = config;
         this.queue = queue;
         this.indexingRole = indexingRole;
+        this.crawlingRole = crawlingRole;
         this.taskSink = taskSink;
         this.logger = logger;
 
@@ -121,18 +125,35 @@ public final class WorkerLoop implements AutoCloseable {
             return;
         }
 
-        if ("ingest".equals(task.getType())) {
-            // Stub temporal hasta integrar el downloader de María:
-            // simula tiempo de descarga para poder probar caída de nodo y toma de relevo.
-            Thread.sleep(1500);
-            for (int bookId : task.getBookIds()) {
-                logger.log("crawl-stub-executed", "bookId", bookId);
-                if (config.crawlStubTriggerIndex()) {
-                    taskSink.bookReady(bookId);
-                }
-            }
-            return;
+    if ("ingest".equals(task.getType())) {
+        if (crawlingRole == null) {
+            throw new IllegalStateException(
+                    "CrawlingRole is not active on this worker"
+            );
         }
+
+        for (int bookId : task.getBookIds()) {
+            CrawlingRole.Result result =
+                    crawlingRole.ingestBook(bookId);
+
+            logger.log(
+                    "crawl-completed",
+                    "bookId", bookId,
+                    "result", result.name()
+            );
+
+            /*
+            * Always announce a READY book, including ALREADY_READY.
+            *
+            * A worker may fail after publishing the document but before
+            * completing the handoff to Indexing. On retry, the next worker
+            * observes ALREADY_READY and must still resume the pipeline.
+            */
+            taskSink.bookReady(bookId);
+        }
+
+        return;
+    }
 
         throw new IllegalArgumentException("Unknown task type: " + task.getType());
     }
