@@ -9,10 +9,19 @@ The design is selected at start-up with `INDEX_DESIGN=A|B` (default `A`).
 
 | Map (name from `HazelcastNames`) | Key | Value |
 |---|---|---|
-| `postings-v{N}` | term (lower case, letters only, as normalised by Search) | JSON array of `[bookId, tf]`, sorted by `tf` DESC then `bookId` ASC |
-| `books-v{N}` | `bookId` (Integer) | JSON of `common.Book` |
+| `postings-v{N}` | term (lower case, letters only, as normalised by Search) | `int[]` with interleaved pairs `bookId, tf`, sorted by `tf` DESC then `bookId` ASC |
+| `books-v{N}` | `bookId` (Integer) | JSON of `common.Book` (Gson default settings) |
 
-Example of a `postings-v1` entry: key `darcy`, value `[[1,3],[7,1]]`.
+- Postings: `int[]{1,3,7,1}` means book 1 with tf 3, then book 7 with tf 1. The length is always even.
+  Hazelcast serialises `int[]` natively, so no codec is needed. (Measured by Sara: decoding a 1,000-entry list
+  costs about 452 us as JSON and 46 us as `int[]`; JSON would bias the A/B latency comparison.)
+- Books: the fields are exactly those of the record `common.Book`: `bookId`, `title`, `author`, `language`,
+  `year`, `termCount`, `indexedAt`. `termCount` and `indexedAt` mean the same as the columns `term_count` and
+  `indexed_at` of design A. A missing `year` (null) is left out by Gson: the reader reads it as null.
+
+```json
+{"bookId":1,"title":"Pride and Prejudice","author":"Jane Austen","language":"en","year":1998,"termCount":14,"indexedAt":"2026-11-24T10:00:00Z"}
+```
 
 ## Rules
 
@@ -20,19 +29,32 @@ Example of a `postings-v1` entry: key `darcy`, value `[[1,3],[7,1]]`.
    Nothing is written to `postings-v{N}` or `books-v{N}` after that.
 2. **Search reads one pinned version.** A request takes `snapshot()` first and reads only the maps of that
    version (`IndexReader` contract, rule 7), so it never sees a half-built or a newer version.
-3. **Order is stored, not computed.** The posting lists are already in the order `IndexReader` requires;
+3. **Order is stored, not computed.** The posting lists already have the order `IndexReader` requires;
    Search applies filters (author, language, year) with `books-v{N}.getAll(ids)` and pages the result.
-4. **Manifest in `index-versions`.** Design B reuses `IndexManifest` with: `file` = `postings-v{N}` (a bare
-   name, as required), `sha256` = digest of the postings entries computed by the writer, `sizeBytes` = total size
-   of the values, `createdAtMillis` = when the version became candidate. There is no file on disk.
-5. **Loaded in B** means that the maps of N exist and are complete; a Search reports it as soon as it checks this,
-   so the same promotion rule applies.
+4. **Manifest in `index-versions`.** Design B reuses `IndexManifest`: `file` = `postings-v{N}` (a bare name),
+   `createdAtMillis` = when the version became candidate, and:
+   - `sha256` and `sizeBytes` are computed on a canonical UTF-8 text made of, in this order, one line per term of
+     `postings-v{N}` sorted by `String.compareTo` of the term, `term<TAB>v1,v2,...,vn<LF>` (the values of the
+     `int[]` separated by commas, no spaces), followed by one line per book sorted by ascending `bookId`,
+     `bookId<TAB>json<LF>` (the JSON exactly as stored in `books-v{N}`).
+   - `sha256` is the lower-case hex SHA-256 of that text and `sizeBytes` its length in bytes, so an integrity
+     check can recompute both from the maps.
+5. **Loaded in B** means that the manifest of N exists in `index-versions`. Indexing writes it after both maps are
+   complete, so its existence already means complete. A Search reports N in `search-loaded` once it sees it, so
+   the same promotion rule as in design A applies.
 6. **Cleanup.** Versions older than N-1 may be deleted once N is published (N-1 stays so running requests finish).
+   Deleting a version means destroying its two maps and removing its entry in `index-versions`.
 7. **Backups.** Both maps are configured with at least one backup, so one member can leave without losing data.
-8. **Restart.** A full restart of the Hazelcast cluster empties these maps. Recovery is a complete rebuild from
-   the datalake, since there are no files to restore from.
+8. **Full restart keeps the numbering.** A restart of the whole Hazelcast cluster empties these maps, and a
+   Search never lowers the published version it has seen. Indexing therefore keeps `published-version.txt` in the
+   shared folder, as in design A, and after a full restart rebuilds the index from the datalake as version
+   `max(published-version.txt, highest known version) + 1`, never from v1. Until that version is published, Search
+   is not ready (the old maps no longer exist).
+9. **Memory.** While a switch is in progress, versions N and N-1 coexist and each has a backup, so up to four
+   times the size of one copy of the index is held in the cluster. This is part of the resource-use measurements.
 
-## Open points (to agree before the writer and the reader are merged)
+## Decisions taken
 
-- Whether the Search nodes are Hazelcast members (hold partitions) or clients, as in design A.
-- Value format: JSON first, a binary format only if measurements show it is needed.
+- The Search nodes are Hazelcast members (the worker program already starts a member), so they hold partitions.
+  The cost is rebalancing when a Search joins or leaves, which is measured in design B.
+- Postings as `int[]`, books as JSON.
