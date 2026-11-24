@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,8 +37,10 @@ import static com.skimsearch.common.HazelcastNames.postingsMap;
  *
  * The number of the new version is above every number ever seen: the candidate, the published version,
  * the versions in "index-versions" and published-version.txt, so a rebuild after a full restart of
- * Hazelcast never reuses a number (contract, rule 8). After such a restart the caller must pass ALL the
- * books, because the previous maps are gone.
+ * Hazelcast never reuses a number (contract, rule 8). If Hazelcast has lost every version while some version
+ * number is already known (a restart of the cluster while this process keeps running), the previous maps are
+ * gone, so the new version is rebuilt from EVERY complete book of the datalake plus the given ones. Without
+ * this, the new version would hold only the given books and the rest would vanish from the index.
  *
  * The caller must hold the build lock (IndexingRole does).
  */
@@ -64,6 +67,15 @@ public final class HazelcastIndexingService implements IndexBuilder {
         }
         long started = System.nanoTime();
 
+        IMap<Long, String> versions = hz.getMap(VERSIONS_MAP);
+        if (versions.isEmpty() && highestKnownVersion() > 0) {
+            // Hazelcast lost every version: rebuild from every complete book, not only the requested ones
+            Set<Integer> all = new LinkedHashSet<>(datalake.completeBookIds());
+            all.addAll(bookIds);
+            bookIds = new ArrayList<>(all);
+            log("event=index-rebuild-from-datalake books=" + bookIds.size());
+        }
+
         // Read and tokenise everything first: a missing book fails before any map is touched.
         List<IndexStore.BookIndexData> books = new ArrayList<>();
         for (int bookId : bookIds) {
@@ -73,7 +85,6 @@ public final class HazelcastIndexingService implements IndexBuilder {
                     Tokenizer.termFrequencies(raw.body())));
         }
 
-        IMap<Long, String> versions = hz.getMap(VERSIONS_MAP);
         long previous = 0;
         for (Long version : versions.keySet()) {
             previous = Math.max(previous, version);

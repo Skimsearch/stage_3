@@ -2,6 +2,7 @@ package com.skimsearch.indexing;
 
 import com.google.gson.Gson;
 import com.hazelcast.config.Config;
+import com.hazelcast.core.DistributedObject;
 import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.map.IMap;
@@ -159,6 +160,23 @@ class HazelcastIndexingServiceTest {
 
         assertEquals(6, manifest.version());
         assertEquals(Set.of(1, 2, 3), books(6).keySet());
+    }
+
+    @Test
+    void afterAHazelcastRestartTheNextVersionStillHoldsEveryBook() throws IOException {
+        announce(service.indexBooks(List.of(1, 2, 3)));
+        // Searches saw version 1, and the shared folder remembers it
+        Files.writeString(shared.resolve(IndexPublisher.PUBLISHED_FILE), "1");
+        // the cluster restarts while this indexer process keeps running: every map is gone
+        hz.getDistributedObjects().forEach(DistributedObject::destroy);
+        book(4, "Fourth", "Someone", "love darcy");
+
+        IndexManifest manifest = service.indexBooks(List.of(4));
+
+        assertEquals(2, manifest.version());
+        assertEquals(Set.of(1, 2, 3, 4), books(2).keySet());
+        assertArrayEquals(new int[] {2, 2, 1, 1, 3, 1, 4, 1}, postings(2).get("love"));
+        assertArrayEquals(new int[] {1, 2, 2, 1, 4, 1}, postings(2).get("darcy"));
     }
 
     @Test
