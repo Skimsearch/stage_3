@@ -12,8 +12,8 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * The indexing role of a worker (design A): builds index versions from datalake
- * books, announces each one as candidate, and periodically tries to promote the
+ * The indexing role of a worker: builds index versions from datalake
+ * books (with the builder of design A or B), announces each one as candidate, and periodically tries to promote the
  * candidate to published.
  *
  * Building a version is guarded by a lock, so that two Indexing processes (on the same
@@ -23,17 +23,17 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public final class IndexingRole implements AutoCloseable {
 
-    private final VersionedIndexingService service;
+    private final IndexBuilder service;
     private final IndexPublisher publisher;
     private final Lock buildLock;
     private final ScheduledExecutorService promoter;
 
     /** Lock only inside this process. */
-    public IndexingRole(VersionedIndexingService service, IndexPublisher publisher, Duration promoteEvery) {
+    public IndexingRole(IndexBuilder service, IndexPublisher publisher, Duration promoteEvery) {
         this(service, publisher, promoteEvery, new ReentrantLock());
     }
 
-    public IndexingRole(VersionedIndexingService service, IndexPublisher publisher, Duration promoteEvery,
+    public IndexingRole(IndexBuilder service, IndexPublisher publisher, Duration promoteEvery,
                         Lock buildLock) {
         this.service = service;
         this.publisher = publisher;

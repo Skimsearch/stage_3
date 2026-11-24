@@ -33,6 +33,8 @@ import java.util.Set;
  *                        (this one included); enables the tcp-ip join so members on
  *                        different machines form ONE cluster. Without it, this member
  *                        runs alone.
+ *   INDEX_DESIGN         A (default: SQLite files in SHARED_INDEX_DIR) or B (index in Hazelcast maps;
+ *                        SHARED_INDEX_DIR then only holds published-version.txt, use a folder of its own)
  *   INDEX_EVERY_SECONDS  default 10
  *   PROMOTE_EVERY_SECONDS default 1
  *
@@ -64,11 +66,14 @@ public final class IndexMain {
         Duration indexEvery = Duration.ofSeconds(Long.parseLong(env.getOrDefault("INDEX_EVERY_SECONDS", "10")));
         Duration promoteEvery = Duration.ofSeconds(Long.parseLong(env.getOrDefault("PROMOTE_EVERY_SECONDS", "1")));
 
+        String design = env.getOrDefault("INDEX_DESIGN", "A");
+        IndexBuilders.checkDesign(design);
+
         HazelcastInstance hz = Hazelcast.newHazelcastInstance(hazelcastConfig(env));
 
         DatalakeReader datalake = new DatalakeReader(datalakeDir);
         IndexingRole role = new IndexingRole(
-                new VersionedIndexingService(datalake, new IndexVersionWriter(sharedIndexDir)),
+                IndexBuilders.create(design, datalake, sharedIndexDir, hz),
                 new IndexPublisher(hz, sharedIndexDir),
                 promoteEvery,
                 HazelcastBuildLock.of(hz));
@@ -78,7 +83,7 @@ public final class IndexMain {
             hz.shutdown();
         }));
 
-        log("event=index-main-started datalake=" + datalakeDir.toAbsolutePath()
+        log("event=index-main-started design=" + design.toUpperCase() + " datalake=" + datalakeDir.toAbsolutePath()
                 + " sharedIndexDir=" + sharedIndexDir.toAbsolutePath());
 
         Set<Integer> indexed = new HashSet<>();
@@ -106,6 +111,9 @@ public final class IndexMain {
         var network = config.getNetworkConfig();
         network.setPort(Integer.parseInt(env.getOrDefault("HZ_PORT", "5701")));
         network.setPortAutoIncrement(false);
+        // design B: index maps keep one backup, so a member can leave without losing the index
+        config.getMapConfig("postings-v*").setBackupCount(1);
+        config.getMapConfig("books-v*").setBackupCount(1);
         String publicAddress = env.getOrDefault("HZ_PUBLIC_ADDRESS", "");
         if (!publicAddress.isBlank()) {
             network.setPublicAddress(publicAddress);
