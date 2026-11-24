@@ -52,6 +52,8 @@ public final class HazelcastIndexingService implements IndexBuilder {
     private final DatalakeReader datalake;
     private final HazelcastInstance hz;
     private final Path sharedIndexDir;
+    // written and read under the build lock held by IndexingRole
+    private volatile int lastBuildBooks = -1;
 
     /** sharedIndexDir only holds published-version.txt; it may be null (then the file is ignored). */
     public HazelcastIndexingService(DatalakeReader datalake, HazelcastInstance hz, Path sharedIndexDir) {
@@ -148,6 +150,7 @@ public final class HazelcastIndexingService implements IndexBuilder {
         }
         bookMap.putAll(newBooks);
 
+        lastBuildBooks = books.size();
         IndexDigest digest = digestOf(postings, bookMap);
         IndexManifest manifest = new IndexManifest(next, "postings-v" + next, digest.sha256(),
                 digest.sizeBytes(), System.currentTimeMillis());
@@ -155,6 +158,11 @@ public final class HazelcastIndexingService implements IndexBuilder {
                 + " terms=" + postings.size() + " bytes=" + digest.sizeBytes()
                 + " ms=" + (System.nanoTime() - started) / 1_000_000);
         return manifest;
+    }
+
+    @Override
+    public int booksInLastBuild(int requested) {
+        return lastBuildBooks >= 0 ? lastBuildBooks : requested;
     }
 
     /**

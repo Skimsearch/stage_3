@@ -14,4 +14,13 @@ public interface IndexBuilder {
 
     /** New version = previous version + these books. */
     IndexManifest indexBooks(List<Integer> bookIds);
+
+    /**
+     * Books actually built by the last call of {@link #indexBooks}, which can be more than requested
+     * (design B rebuilds every book after Hazelcast lost all versions). Read it right after indexBooks,
+     * under the same build lock. By default the requested books.
+     */
+    default int booksInLastBuild(int requested) {
+        return requested;
+    }
 }
