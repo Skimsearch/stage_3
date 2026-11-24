@@ -59,7 +59,8 @@ public final class IndexingRole implements AutoCloseable {
             long buildNanos = System.nanoTime() - buildStart;
             publisher.announceCandidate(manifest);
             log("event=index-candidate-announced version=" + manifest.version());
-            log(buildFinishedEvent(manifest.version(), bookIds.size(), buildNanos, buildStart - waitStart));
+            int built = service.booksInLastBuild(bookIds.size());
+            log(buildFinishedEvent(manifest.version(), bookIds.size(), built, buildNanos, buildStart - waitStart));
             return manifest;
         } finally {
             buildLock.unlock();
@@ -67,16 +68,19 @@ public final class IndexingRole implements AutoCloseable {
     }
 
     /**
-     * Indexing rate of one build: books of the request divided by the build time (reading the books,
+     * Indexing rate of one build: books actually built divided by the build time (reading the books,
      * tokenising and writing the version; the lock wait and the announcement are not included).
-     * The lock wait is logged apart, so contention between indexers is visible too.
+     * requested = books of the task; books = books built (more than requested when design B rebuilds
+     * everything after a Hazelcast restart, then rebuild=true). The lock wait is logged apart, so
+     * contention between indexers is visible too.
      */
-    static String buildFinishedEvent(long version, int books, long buildNanos, long lockWaitNanos) {
+    static String buildFinishedEvent(long version, int requested, int books, long buildNanos, long lockWaitNanos) {
         double seconds = buildNanos / 1e9;
         double rate = seconds > 0 ? books / seconds : 0;
         return String.format(java.util.Locale.ROOT,
-                "event=index-build-finished version=%d books=%d buildMs=%.1f lockWaitMs=%.1f booksPerSecond=%.2f",
-                version, books, buildNanos / 1e6, lockWaitNanos / 1e6, rate);
+                "event=index-build-finished version=%d requested=%d books=%d rebuild=%b buildMs=%.1f "
+                        + "lockWaitMs=%.1f booksPerSecond=%.2f",
+                version, requested, books, books > requested, buildNanos / 1e6, lockWaitNanos / 1e6, rate);
     }
 
     private void promoteQuietly() {

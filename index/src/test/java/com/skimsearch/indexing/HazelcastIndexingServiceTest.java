@@ -92,6 +92,7 @@ class HazelcastIndexingServiceTest {
         IndexManifest manifest = service.indexBooks(List.of(1, 2));
 
         assertEquals(1, manifest.version());
+        assertEquals(2, service.booksInLastBuild(2));
         assertEquals("postings-v1", manifest.file());
         assertEquals(Set.of(1, 2), books(1).keySet());
         assertEquals(Set.of("darcy", "love", "whale"), postings(1).keySet());
@@ -174,6 +175,7 @@ class HazelcastIndexingServiceTest {
         IndexManifest manifest = service.indexBooks(List.of(4));
 
         assertEquals(2, manifest.version());
+        assertEquals(4, service.booksInLastBuild(1));
         assertEquals(Set.of(1, 2, 3, 4), books(2).keySet());
         assertArrayEquals(new int[] {2, 2, 1, 1, 3, 1, 4, 1}, postings(2).get("love"));
         assertArrayEquals(new int[] {1, 2, 2, 1, 4, 1}, postings(2).get("darcy"));
