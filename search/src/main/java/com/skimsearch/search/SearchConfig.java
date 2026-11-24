@@ -18,6 +18,8 @@ import java.util.Map;
  *                            other machines use to reach this Search (never guessed, because
  *                            on Linux the local host name often resolves to 127.0.1.1).
  * CONSUL_URL empty        -> no service discovery (local tests).
+ * INDEX_DESIGN            A (default) or B. B reads the index from Hazelcast maps
+ *                         (docs/design-b-contract.md) and needs a Hazelcast instance.
  */
 public record SearchConfig(
         String workerId,
@@ -31,7 +33,8 @@ public record SearchConfig(
         Path localDir,
         Path sharedIndexDir,
         URI consulUrl,
-        String advertiseHost
+        String advertiseHost,
+        String indexDesign
 ) {
 
     public static SearchConfig fromEnvironment() {
@@ -64,6 +67,13 @@ public record SearchConfig(
                     "CONSUL_URL is set but SEARCH_ADVERTISE_HOST is missing: set it to this machine's IP");
         }
 
+        String indexDesign = env.getOrDefault("INDEX_DESIGN", "A").trim().toUpperCase(java.util.Locale.ROOT);
+        if (indexDesign.isEmpty()) {
+            indexDesign = "A";
+        }
+        if (!indexDesign.equals("A") && !indexDesign.equals("B")) {
+            throw new IllegalArgumentException("INDEX_DESIGN must be A or B: " + env.get("INDEX_DESIGN"));
+        }
 
         return new SearchConfig(
                 env.getOrDefault("WORKER_ID", "search-" + port),
@@ -79,12 +89,17 @@ public record SearchConfig(
                         ? null
                         : Path.of(env.get("SHARED_INDEX_DIR")),
                 consulUrl,
-                advertiseHost
+                advertiseHost,
+                indexDesign
         );
     }
 
     public boolean usesHazelcast() {
         return !hzAddresses.isEmpty();
+    }
+
+    public boolean designB() {
+        return indexDesign.equals("B");
     }
 
     public boolean usesConsul() {
