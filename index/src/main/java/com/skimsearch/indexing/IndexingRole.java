@@ -51,15 +51,32 @@ public final class IndexingRole implements AutoCloseable {
     /** Builds the next version from these books and announces it as candidate. */
     // The lock covers build + announce: the next caller starts from the version just finished.
     public IndexManifest indexBooks(List<Integer> bookIds) {
+        long waitStart = System.nanoTime();
         buildLock.lock();
         try {
+            long buildStart = System.nanoTime();
             IndexManifest manifest = service.indexBooks(bookIds);
+            long buildNanos = System.nanoTime() - buildStart;
             publisher.announceCandidate(manifest);
             log("event=index-candidate-announced version=" + manifest.version());
+            log(buildFinishedEvent(manifest.version(), bookIds.size(), buildNanos, buildStart - waitStart));
             return manifest;
         } finally {
             buildLock.unlock();
         }
+    }
+
+    /**
+     * Indexing rate of one build: books of the request divided by the build time (reading the books,
+     * tokenising and writing the version; the lock wait and the announcement are not included).
+     * The lock wait is logged apart, so contention between indexers is visible too.
+     */
+    static String buildFinishedEvent(long version, int books, long buildNanos, long lockWaitNanos) {
+        double seconds = buildNanos / 1e9;
+        double rate = seconds > 0 ? books / seconds : 0;
+        return String.format(java.util.Locale.ROOT,
+                "event=index-build-finished version=%d books=%d buildMs=%.1f lockWaitMs=%.1f booksPerSecond=%.2f",
+                version, books, buildNanos / 1e6, lockWaitNanos / 1e6, rate);
     }
 
     private void promoteQuietly() {
