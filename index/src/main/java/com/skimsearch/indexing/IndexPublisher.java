@@ -101,11 +101,11 @@ public final class IndexPublisher {
         if (!enough && !timedOut) {
             return false;
         }
-        boolean raised = raise(PUBLISHED_KEY, candidate);
-        if (raised) {
-            savePublishedFile(candidate);
-        }
-        return raised;
+        // File first, key second: if the process dies in between, the file is ahead of what Searches saw
+        // and a restart can only skip a version number. The opposite order could publish the same number
+        // twice with different content.
+        savePublishedFile(candidate);
+        return raise(PUBLISHED_KEY, candidate);
     }
 
     public long publishedVersion() {
