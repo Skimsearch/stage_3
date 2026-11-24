@@ -46,13 +46,19 @@ public final class SearchMain {
                 : config::publishedVersion;
 
         IndexReader index;
-        if (config.usesVersionedIndex()) {
+        if (config.designB()) {
+            if (hz == null) {
+                throw new IllegalStateException(
+                        "INDEX_DESIGN=B needs Hazelcast: set HZ_ADDRESSES or start Search from the worker");
+            }
+            HazelcastIndexReader reader = new HazelcastIndexReader(hz, published, REFRESH_EVERY);
+            announceLoaded(hz, config, reader::highestAvailableVersion);
+            index = reader;
+        } else if (config.usesVersionedIndex()) {
             VersionedIndex versioned = new VersionedIndex(
                     config.sharedIndexDir(), config.localIndexDir(), published, REFRESH_EVERY);
             if (hz != null) {
-                LoadedVersionAnnouncer announcer = new LoadedVersionAnnouncer(
-                        hz, config.workerId(), versioned::highestLoadedVersion, ANNOUNCE_EVERY, ANNOUNCE_TTL);
-                Runtime.getRuntime().addShutdownHook(new Thread(announcer::close));
+                announceLoaded(hz, config, versioned::highestLoadedVersion);
             }
             index = versioned;
         } else {
@@ -71,14 +77,23 @@ public final class SearchMain {
             Runtime.getRuntime().addShutdownHook(new Thread(consul::close));
         }
 
-        System.out.printf("search role started: worker=%s port=%d threads=%d index=%s hazelcast=%s consul=%s%n",
-                config.workerId(), config.port(), config.threads(),
-                config.usesVersionedIndex()
+        System.out.printf("search role started: worker=%s port=%d threads=%d design=%s index=%s hazelcast=%s consul=%s%n",
+                config.workerId(), config.port(), config.threads(), config.indexDesign(),
+                config.designB() ? "hazelcast maps"
+                        : config.usesVersionedIndex()
                         ? "versioned " + config.sharedIndexDir().toAbsolutePath()
                         : config.indexPath().toAbsolutePath() + " v" + config.indexVersion(),
                 hz != null ? config.hzAddresses() : "off",
                 config.usesConsul() ? config.consulUrl() + " as " + config.advertiseHost() : "off");
         return app;
+    }
+
+    /** Announces the highest loaded version in search-loaded, so Indexing can promote a candidate. */
+    private static void announceLoaded(HazelcastInstance hz, SearchConfig config,
+                                       java.util.function.LongSupplier highestLoaded) {
+        LoadedVersionAnnouncer announcer = new LoadedVersionAnnouncer(
+                hz, config.workerId(), highestLoaded, ANNOUNCE_EVERY, ANNOUNCE_TTL);
+        Runtime.getRuntime().addShutdownHook(new Thread(announcer::close));
     }
 
     /** Javalin with Gson, the thread pool and the access log; routes registered, not started. */
