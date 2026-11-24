@@ -36,7 +36,10 @@ The design is selected at start-up with `INDEX_DESIGN=A|B` (default `A`).
    - `sha256` and `sizeBytes` are computed on a canonical UTF-8 text made of, in this order, one line per term of
      `postings-v{N}` sorted by `String.compareTo` of the term, `term<TAB>v1,v2,...,vn<LF>` (the values of the
      `int[]` separated by commas, no spaces), followed by one line per book sorted by ascending `bookId`,
-     `bookId<TAB>json<LF>` (the JSON exactly as stored in `books-v{N}`).
+     `bookId<TAB>json<LF>`. The JSON is used **byte for byte as stored** in `books-v{N}` and is never
+     re-serialised: Gson escapes characters such as the apostrophe (`Alice's` is stored as `Alice\u0027s`), while
+     other serialisers (for example Python's `json.dumps`) would write `'`, which gives a different `sha256` for an
+     identical book. A checker must read the stored string, not rebuild it.
    - `sha256` is the lower-case hex SHA-256 of that text and `sizeBytes` its length in bytes, so an integrity
      check can recompute both from the maps.
 5. **Loaded in B** means that the manifest of N exists in `index-versions`. Indexing writes it after both maps are
@@ -48,8 +51,14 @@ The design is selected at start-up with `INDEX_DESIGN=A|B` (default `A`).
 8. **Full restart keeps the numbering.** A restart of the whole Hazelcast cluster empties these maps, and a
    Search never lowers the published version it has seen. Indexing therefore keeps `published-version.txt` in the
    shared folder, as in design A, and after a full restart rebuilds the index from the datalake as version
-   `max(published-version.txt, highest known version) + 1`, never from v1. Until that version is published, Search
-   is not ready (the old maps no longer exist).
+   `max(published-version.txt, versions left in index-versions) + 1`, never from v1 (after a full restart
+   `index-versions` is usually empty, so in practice the number comes from the file). Until that version is
+   published, Search is not ready (the old maps no longer exist).
+   **Write order:** `published-version.txt` is written *before* `index.publishedVersion` is raised. If the process
+   dies in between, the file is ahead of what Searches saw, and the worst case after a restart is a skipped version
+   number, which is harmless. The opposite order could leave the file behind: the rebuild would publish the same
+   number again, possibly with different content (the datalake may have grown), so one number would mean two
+   contents.
 9. **Memory.** While a switch is in progress, versions N and N-1 coexist and each has a backup, so up to four
    times the size of one copy of the index is held in the cluster. This is part of the resource-use measurements.
 
