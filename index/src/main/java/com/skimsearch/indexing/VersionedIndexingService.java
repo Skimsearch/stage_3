@@ -10,7 +10,7 @@ import java.util.List;
  * All books are read and tokenised first: if one is missing or incomplete,
  * the exception is thrown before any index file is written.
  */
-public final class VersionedIndexingService {
+public final class VersionedIndexingService implements IndexBuilder {
 
     private final DatalakeReader datalake;
     private final IndexVersionWriter writer;
@@ -21,6 +21,7 @@ public final class VersionedIndexingService {
     }
 
     /** New version = previous version + these books. Returns its manifest. */
+    @Override
     public IndexManifest indexBooks(List<Integer> bookIds) {
         if (bookIds.isEmpty()) {
             throw new IllegalArgumentException("No book IDs provided: a version must contain at least one book");
