@@ -67,7 +67,7 @@ public record SearchConfig(
                     "CONSUL_URL is set but SEARCH_ADVERTISE_HOST is missing: set it to this machine's IP");
         }
 
-                String indexDesign = env.getOrDefault("INDEX_DESIGN", "A").trim().toUpperCase(java.util.Locale.ROOT);
+        String indexDesign = env.getOrDefault("INDEX_DESIGN", "A").trim().toUpperCase(java.util.Locale.ROOT);
         if (indexDesign.isEmpty()) {
             indexDesign = "A";
         }
