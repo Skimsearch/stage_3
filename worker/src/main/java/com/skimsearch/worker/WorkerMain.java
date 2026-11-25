@@ -1,6 +1,7 @@
 package com.skimsearch.worker;
 
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -60,18 +61,26 @@ public final class WorkerMain {
         }
 
         if (config.roles().contains("index")) {
+            String design = (indexDesign == null || indexDesign.isBlank()) 
+                    ? "A" 
+                    : indexDesign.trim().toUpperCase();
+
+            // design B only keeps published-version.txt there, in a folder of its own, so the
+            // manifests of a design A run are never restored as B versions
+            Path indexDir = "B".equals(design)
+                    ? config.sharedIndexDir().resolve("design-b")
+                    : config.sharedIndexDir();
+
             indexingRole = new IndexingRole(
-                    IndexBuilders.create(indexDesign,
-                            new DatalakeReader(config.datalakeDir()),
-                            config.sharedIndexDir(),
-                            hz),
-                    new IndexPublisher(hz, config.sharedIndexDir()),
+                    IndexBuilders.create(design, new DatalakeReader(config.datalakeDir()), indexDir, hz),
+                    new IndexPublisher(hz, indexDir),
                     Duration.ofSeconds(1),
                     HazelcastBuildLock.of(hz)
             );
-            logger.log("role-started", "role", "index",
-                    "design", indexDesign == null || indexDesign.isBlank() ? "A" : indexDesign.trim().toUpperCase());
+
+            logger.log("role-started", "role", "index", "design", design);
         }
+
 
         if (config.roles().contains("crawl")) {
 
