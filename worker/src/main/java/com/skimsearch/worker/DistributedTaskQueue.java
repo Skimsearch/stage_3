@@ -47,7 +47,7 @@ public final class DistributedTaskQueue {
     }
 
     /**
-     * Envío idempotente: si el ID de tarea ya existía, no se duplica en la cola.
+     * Idempotent submit: if the task id already exists, it is not queued twice.
      */
     public boolean submit(Task task) {
         String json = gson.toJson(task);
@@ -64,7 +64,7 @@ public final class DistributedTaskQueue {
     }
 
     /**
-     * Reclamación atómica: poll -> lease con TTL -> inflight.
+     * Atomic claim: poll -> lease with TTL -> inflight.
      */
     public Optional<Task> claimNext(String workerId, Set<String> roles, long pollTimeoutMs) throws InterruptedException {
         IQueue<String> targetQueue = selectQueueForRoles(roles);
@@ -82,7 +82,7 @@ public final class DistributedTaskQueue {
             return Optional.empty();
         }
 
-        // Orden estricto: primero el lease con TTL y después inflight
+        // Strict order: lease with TTL first, then inflight
         leases.put(taskId, workerId, leaseTtlMs, TimeUnit.MILLISECONDS);
         inflight.put(taskId, json);
 
@@ -96,7 +96,7 @@ public final class DistributedTaskQueue {
     }
 
     /**
-     * Renueva el latido mientras la tarea sigue en ejecución y pertenece a este worker.
+     * Renews the heartbeat while the task is still running and belongs to this worker.
      */
     public boolean renewLease(String taskId, String workerId) {
         String owner = leases.get(taskId);
@@ -108,7 +108,7 @@ public final class DistributedTaskQueue {
     }
 
     /**
-     * Marca la tarea como completada y registra datos para la matriz trabajador x tarea.
+     * Completed task and register data for the matrix.
      */
     public void complete(Task task, String workerId, long durationMs) {
         inflight.remove(task.getId());
@@ -131,7 +131,7 @@ public final class DistributedTaskQueue {
     }
 
     /**
-     * Gestiona el fallo durante la ejecución: reencola o manda a fallidas.
+     * Handles a failure during execution: requeues the task or moves it to failed.
      */
     public void failOrRequeue(Task task, String workerId, String reason) {
         inflight.remove(task.getId());
@@ -140,7 +140,7 @@ public final class DistributedTaskQueue {
     }
 
     /**
-     * Reaper: detecta tareas en inflight cuyo lease ha caducado y solo un worker gana la recuperación.
+     * Reaper: finds inflight tasks whose lease expired; only one worker wins the recovery.
      */
     public void reapExpiredLeases(String reaperWorkerId) {
         for (String taskId : inflight.keySet()) {
