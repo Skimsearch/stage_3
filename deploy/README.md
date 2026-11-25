@@ -184,6 +184,8 @@ Produces the self-contained executable JAR at `worker/target/worker.jar`.
 | `INDEX_BATCH_SIZE` | No | `5` | Number of ready books grouped before creating an `index` task. |
 | `INDEX_BATCH_FLUSH_MS` | No | `3000` | Max wait time (ms) before flushing a partial `index` batch. |
 | `SEED_BOOKS` | No | *(empty)* | Optional list of initial book IDs to enqueue as `ingest` tasks on startup. |
+| `INDEX_DESIGN` | No | `A` | Index design to use. Allowed values: `A` or `B`. **Must be the same across all workers.** |
+
 
 ---
 
@@ -217,7 +219,7 @@ On the machine acting as gateway, follow [`deploy/gateway/README.md`](gateway/RE
   export HZ_MEMBERS="192.168.1.11:5701,192.168.1.12:5701,192.168.1.13:5701"
   export SEARCH_PORT=7003
   export SEARCH_ADVERTISE_HOST="192.168.1.12"
-  export CONSUL_URL="[http://192.168.1.10:8500](http://192.168.1.10:8500)"
+  export CONSUL_URL="http://192.168.1.10:8500"
   export SHARED_INDEX_DIR="/mnt/shared/indexes"
   export LOCAL_DIR="/tmp/skimsearch-w2"
   java -jar worker/target/worker.jar
