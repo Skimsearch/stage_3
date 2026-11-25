@@ -71,6 +71,8 @@ public final class WorkerMain {
                     ? config.sharedIndexDir().resolve("design-b")
                     : config.sharedIndexDir();
 
+            Files.createDirectories(indexDir);
+            
             indexingRole = new IndexingRole(
                     IndexBuilders.create(design, new DatalakeReader(config.datalakeDir()), indexDir, hz),
                     new IndexPublisher(hz, indexDir),
