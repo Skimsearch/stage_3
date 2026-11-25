@@ -32,8 +32,8 @@ public final class WorkerHazelcast {
         }
 
         // design B: index maps keep one backup, so a member can leave without losing the index
-config.getMapConfig("postings-v*").setBackupCount(1);
-config.getMapConfig("books-v*").setBackupCount(1);
+        config.getMapConfig("postings-v*").setBackupCount(1);
+        config.getMapConfig("books-v*").setBackupCount(1);
 
         return config;
     }
