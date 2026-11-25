@@ -7,7 +7,7 @@ param(
     [string]$HzPublicAddress = "",
     [string]$HzMembers = "127.0.0.1:5701,127.0.0.1:5702",
     [int]$SearchPort = 7003,
-    [int]$SearchThreads = 4,
+    [int]$SearchThreads = 50,
     [string]$SearchAdvertiseHost = "127.0.0.1",
     [string]$ConsulUrl = "",
     [string]$DatalakeDir = "data/datalake",
