@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$WorkerId,
     [Parameter(Mandatory=$true)][string]$Roles,
+    [string]$IndexDesign = "A",
     [string]$RunId = "A-worker-2nodes-run01",
     [int]$HzPort = 5701,
     [string]$HzPublicAddress = "",
@@ -31,6 +32,7 @@ $env:WORKER_ROLES = $Roles
 $env:HZ_CLUSTER_NAME = "skimsearch"
 $env:HZ_PORT = "$HzPort"
 $env:HZ_PUBLIC_ADDRESS = $HzPublicAddress
+$env:INDEX_DESIGN = $IndexDesign
 $env:HZ_MEMBERS = $HzMembers
 $env:SEARCH_PORT = "$SearchPort"
 $env:SEARCH_THREADS = "$SearchThreads"

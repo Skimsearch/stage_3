@@ -10,8 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.skimsearch.common.TaskSink;
 
 /**
- * Implementación de TaskSink que agrupa libros listos en lotes de tamaño N
- * o cada T milisegundos para evitar crear una versión completa de SQLite por cada libro.
+ * TaskSink implementation that groups ready books into batches of N books or every T milliseconds, to avoid building a full index version per book.
  */
 public final class BatchingTaskSink implements TaskSink {
 

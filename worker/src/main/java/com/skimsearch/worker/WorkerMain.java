@@ -1,23 +1,23 @@
 package com.skimsearch.worker;
 
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
-import com.skimsearch.indexing.DatalakeReader;
-import com.skimsearch.indexing.HazelcastBuildLock;
-import com.skimsearch.indexing.IndexPublisher;
-import com.skimsearch.indexing.IndexVersionWriter;
-import com.skimsearch.indexing.IndexingRole;
-import com.skimsearch.indexing.VersionedIndexingService;
-import com.skimsearch.search.SearchConfig;
-import com.skimsearch.search.SearchMain;
 import com.skimsearch.crawl.CrawlingRole;
 import com.skimsearch.crawl.DatalakeWriter;
 import com.skimsearch.crawl.GutenbergClient;
+import com.skimsearch.indexing.DatalakeReader;
+import com.skimsearch.indexing.HazelcastBuildLock;
+import com.skimsearch.indexing.IndexBuilders;
+import com.skimsearch.indexing.IndexPublisher;
+import com.skimsearch.indexing.IndexingRole;
+import com.skimsearch.search.SearchConfig;
+import com.skimsearch.search.SearchMain;
 public final class WorkerMain {
 
     public static void main(String[] args) throws Exception {
@@ -34,6 +34,9 @@ public final class WorkerMain {
                 "hzPort", config.hzPort(),
                 "datalakeDir", config.datalakeDir(),
                 "sharedIndexDir", config.sharedIndexDir());
+
+        String indexDesign = System.getenv("INDEX_DESIGN");   // null o vacío = A
+        IndexBuilders.checkDesign(indexDesign);
 
         HazelcastInstance hz = Hazelcast.newHazelcastInstance(WorkerHazelcast.config(config));
         logger.log("hazelcast-joined",
@@ -58,17 +61,28 @@ public final class WorkerMain {
         }
 
         if (config.roles().contains("index")) {
+            String design = (indexDesign == null || indexDesign.isBlank()) 
+                    ? "A" 
+                    : indexDesign.trim().toUpperCase();
+
+            // design B only keeps published-version.txt there, in a folder of its own, so the
+            // manifests of a design A run are never restored as B versions
+            Path indexDir = "B".equals(design)
+                    ? config.sharedIndexDir().resolve("design-b")
+                    : config.sharedIndexDir();
+
+            Files.createDirectories(indexDir);
+            
             indexingRole = new IndexingRole(
-                    new VersionedIndexingService(
-                            new DatalakeReader(config.datalakeDir()),
-                            new IndexVersionWriter(config.sharedIndexDir())
-                    ),
-                    new IndexPublisher(hz, config.sharedIndexDir()),
+                    IndexBuilders.create(design, new DatalakeReader(config.datalakeDir()), indexDir, hz),
+                    new IndexPublisher(hz, indexDir),
                     Duration.ofSeconds(1),
                     HazelcastBuildLock.of(hz)
             );
-            logger.log("role-started", "role", "index");
+
+            logger.log("role-started", "role", "index", "design", design);
         }
+
 
         if (config.roles().contains("crawl")) {
 

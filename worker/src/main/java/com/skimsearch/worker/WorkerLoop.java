@@ -9,8 +9,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.skimsearch.common.TaskSink;
-import com.skimsearch.indexing.IndexingRole;
 import com.skimsearch.crawl.CrawlingRole;
+import com.skimsearch.indexing.IndexingRole;
 
 public final class WorkerLoop implements AutoCloseable {
 
@@ -45,7 +45,7 @@ public final class WorkerLoop implements AutoCloseable {
             return t;
         });
 
-        // 1. Renovación periódica del lease de la tarea en curso
+        // 1. Periodic lease renewal for the task in progress
         this.maintenanceExecutor.scheduleAtFixedRate(() -> {
             Task active = currentTask.get();
             if (active != null && running.get()) {
