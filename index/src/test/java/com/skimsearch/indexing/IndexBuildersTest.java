@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -34,6 +35,17 @@ class IndexBuildersTest {
         assertThrows(IllegalArgumentException.class, () -> IndexBuilders.create("C", LAKE, Path.of("idx"), null));
         assertThrows(IllegalArgumentException.class, () -> IndexBuilders.checkDesign("both"));
         assertDoesNotThrow(() -> IndexBuilders.checkDesign("B"));
+    }
+
+    @Test
+    void designBHasAnIndexFolderOfItsOwn() {
+        Path shared = Path.of("shared");
+
+        assertEquals(shared, IndexBuilders.indexDir(null, shared));
+        assertEquals(shared, IndexBuilders.indexDir("A", shared));
+        assertEquals(shared.resolve("design-b"), IndexBuilders.indexDir("b", shared));
+        assertEquals("B", IndexBuilders.normalise(" b "));
+        assertThrows(IllegalArgumentException.class, () -> IndexBuilders.indexDir("C", shared));
     }
 
     @Test

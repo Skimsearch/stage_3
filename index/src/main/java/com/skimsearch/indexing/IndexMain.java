@@ -34,7 +34,7 @@ import java.util.Set;
  *                        different machines form ONE cluster. Without it, this member
  *                        runs alone.
  *   INDEX_DESIGN         A (default: SQLite files in SHARED_INDEX_DIR) or B (index in Hazelcast maps;
- *                        SHARED_INDEX_DIR then only holds published-version.txt, use a folder of its own)
+ *                        only published-version.txt, kept in SHARED_INDEX_DIR/design-b)
  *   INDEX_EVERY_SECONDS  default 10
  *   PROMOTE_EVERY_SECONDS default 1
  *
@@ -58,16 +58,14 @@ public final class IndexMain {
             System.err.println("SHARED_INDEX_DIR is required");
             System.exit(2);
         }
-        Path sharedIndexDir = Path.of(shared);
+        String design = IndexBuilders.normalise(env.get("INDEX_DESIGN"));
+        Path sharedIndexDir = IndexBuilders.indexDir(design, Path.of(shared));
         Files.createDirectories(sharedIndexDir);
 
         Path dataDir = Path.of(env.getOrDefault("DATA_DIR", "data"));
         Path datalakeDir = Path.of(env.getOrDefault("DATALAKE_DIR", dataDir.resolve("datalake").toString()));
         Duration indexEvery = Duration.ofSeconds(Long.parseLong(env.getOrDefault("INDEX_EVERY_SECONDS", "10")));
         Duration promoteEvery = Duration.ofSeconds(Long.parseLong(env.getOrDefault("PROMOTE_EVERY_SECONDS", "1")));
-
-        String design = env.getOrDefault("INDEX_DESIGN", "A");
-        IndexBuilders.checkDesign(design);
 
         HazelcastInstance hz = Hazelcast.newHazelcastInstance(hazelcastConfig(env));
 
@@ -83,7 +81,7 @@ public final class IndexMain {
             hz.shutdown();
         }));
 
-        log("event=index-main-started design=" + design.toUpperCase() + " datalake=" + datalakeDir.toAbsolutePath()
+        log("event=index-main-started design=" + design + " datalake=" + datalakeDir.toAbsolutePath()
                 + " sharedIndexDir=" + sharedIndexDir.toAbsolutePath());
 
         Set<Integer> indexed = new HashSet<>();

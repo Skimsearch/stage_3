@@ -61,16 +61,8 @@ public final class WorkerMain {
         }
 
         if (config.roles().contains("index")) {
-            String design = (indexDesign == null || indexDesign.isBlank()) 
-                    ? "A" 
-                    : indexDesign.trim().toUpperCase();
-
-            // design B only keeps published-version.txt there, in a folder of its own, so the
-            // manifests of a design A run are never restored as B versions
-            Path indexDir = "B".equals(design)
-                    ? config.sharedIndexDir().resolve("design-b")
-                    : config.sharedIndexDir();
-
+            String design = IndexBuilders.normalise(indexDesign);
+            Path indexDir = IndexBuilders.indexDir(design, config.sharedIndexDir());
             Files.createDirectories(indexDir);
             
             indexingRole = new IndexingRole(

@@ -10,6 +10,24 @@ public final class IndexBuilders {
     private IndexBuilders() {
     }
 
+    /** "A" or "B" from INDEX_DESIGN; null or blank means A. Fails if it is anything else. */
+    public static String normalise(String design) {
+        String value = design == null || design.isBlank() ? "A" : design.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!value.equals("A") && !value.equals("B")) {
+            throw new IllegalArgumentException("INDEX_DESIGN must be A or B: " + design);
+        }
+        return value;
+    }
+
+    /**
+     * Folder of the index of a design inside SHARED_INDEX_DIR: the folder itself for A, its subfolder
+     * "design-b" for B. Design B only keeps published-version.txt there, in a folder of its own, so
+     * the manifests of a design A run are never restored as B versions.
+     */
+    public static Path indexDir(String design, Path sharedIndexDir) {
+        return normalise(design).equals("B") ? sharedIndexDir.resolve("design-b") : sharedIndexDir;
+    }
+
     /** Fails with IllegalArgumentException if design is not A or B. */
     public static void checkDesign(String design) {
         String value = design == null || design.isBlank() ? "A" : design.trim().toUpperCase();
