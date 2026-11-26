@@ -174,7 +174,7 @@ Produces the self-contained executable JAR at `worker/target/worker.jar`.
 | `SHARED_INDEX_DIR` | Yes (`index`/`search` A) | `data/shared-index` | Path to shared index versions directory. |
 | `LOCAL_DIR` | Yes (`search` A) | `data/local/<id>` | Local directory where `search` copies its active SQLite index. |
 | `SEARCH_PORT` | Yes (`search`) | `7003` | HTTP port for the Search service. |
-| `SEARCH_THREADS` | No | `4` | Search HTTP server worker threads. |
+| `SEARCH_THREADS` | No | `50` | Search HTTP server worker threads (script default; the code default is 250). |
 | `CONSUL_URL` | With gateway | *(empty)* | Consul agent URL (e.g., `http://192.168.1.10:8500`). |
 | `SEARCH_ADVERTISE_HOST` | With gateway | `127.0.0.1` | Host/IP advertised by Search to Consul. |
 | `LEASE_TTL_MS` | No | `6000` | Lease time-to-live (ms) for a claimed task. |
