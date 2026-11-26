@@ -35,7 +35,7 @@ public final class WorkerMain {
                 "datalakeDir", config.datalakeDir(),
                 "sharedIndexDir", config.sharedIndexDir());
 
-        String indexDesign = System.getenv("INDEX_DESIGN");   // null o vacío = A
+        String indexDesign = System.getenv("INDEX_DESIGN");   // null or blank = A
         IndexBuilders.checkDesign(indexDesign);
 
         HazelcastInstance hz = Hazelcast.newHazelcastInstance(WorkerHazelcast.config(config));
