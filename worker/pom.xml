@@ -71,6 +71,7 @@
                         </goals>
                         <configuration>
                             <finalName>worker</finalName>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>
